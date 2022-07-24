@@ -78,5 +78,9 @@ for line in reversed(list(data)):
         for date in amount_sources:
             sale_amount = float(line[6].replace(",","."))-float(line[7].replace(",",".").replace("-","0"))
             buffer_sources[date] += sale_amount*amount_sources[date]/total_amount
-
+    elif line[2] == "Utdelning":
+        asset = line[3]
+        dividend_per_share = float(line[5].replace(",","."))
+        for date in asset_sources[asset]:
+            buffer_sources[date] += asset_sources[asset][date] * dividend_per_share
 data_file.close()
