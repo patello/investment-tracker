@@ -83,4 +83,19 @@ for line in reversed(list(data)):
         dividend_per_share = float(line[5].replace(",","."))
         for date in asset_sources[asset]:
             buffer_sources[date] += asset_sources[asset][date] * dividend_per_share
+    elif "Utländsk källskatt" in line[2]:
+        total_amount = -float(line[6].replace(",","."))
+        remaining_amount = total_amount
+        while remaining_amount > 0:
+            oldest_available = oldest_available_buffer(buffer_sources)
+            if buffer_sources[oldest_available] >= remaining_amount:
+                buffer_sources[oldest_available] -= remaining_amount
+                remaining_amount = 0
+            elif buffer_sources[oldest_available] <= 0:
+                #Deficit, put it here anyway
+                buffer_sources[oldest_available] -= remaining_amount
+                remaining_amount = 0
+            else:
+                remaining_amount -= buffer_sources[oldest_available]
+                buffer_sources[oldest_available] = 0
 data_file.close()
