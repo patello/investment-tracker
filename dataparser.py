@@ -10,6 +10,8 @@ header_row = next(data)
 buffer_sources = {}
 asset_sources = {}
 
+listing_change = False
+
 def oldest_available_buffer(buffer_sources):
     oldest_available = max(buffer_sources)
     for date in buffer_sources:
@@ -23,7 +25,16 @@ def oldest_available_buffer(buffer_sources):
 for line in reversed(list(data)):
     date = datetime.strptime(line[0],"%Y-%m-%d")
     date = date.replace(date.year,date.month,1)
-    if line[2] == "Insättning":
+    if listing_change:
+        listing_change = False
+        listing_change_to = line[3]
+        listing_change_to_amount = float(line[4].replace(",","."))
+        asset_sources[listing_change_to] = asset_sources[listing_change_from]
+        del asset_sources[listing_change_from]
+        #Multiply each entry by the amount diference quotient 
+        for date in asset_sources[listing_change_to]:
+            asset_sources[listing_change_to][date] = asset_sources[listing_change_to][date] * listing_change_to_amount/listing_change_from_amount
+    elif line[2] == "Insättning":
         amount = float(line[6].replace(",","."))
         if date in buffer_sources:
             buffer_sources[date] += amount
@@ -65,7 +76,7 @@ for line in reversed(list(data)):
         total_amount = -float(line[4].replace(",","."))
         remaining_amount = total_amount
         amount_sources = {}
-        while remaining_amount > 1e-10:
+        while remaining_amount > 1e-3:
             oldest_available = oldest_available_buffer(asset_sources[asset])
             if asset_sources[asset][oldest_available] >= remaining_amount:
                 asset_sources[asset][oldest_available] -= remaining_amount
@@ -98,4 +109,8 @@ for line in reversed(list(data)):
             else:
                 remaining_amount -= buffer_sources[oldest_available]
                 buffer_sources[oldest_available] = 0
+    elif "Byte" in line[2]:
+        listing_change = True
+        listing_change_from = line[3]
+        listing_change_from_amount = -float(line[4].replace(",","."))
 data_file.close()
