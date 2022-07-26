@@ -76,7 +76,7 @@ for line in reversed(list(data)):
     elif line[2] == "Köp":
         asset = line[3]
         amount = float(line[4].replace(",","."))
-        total_amount = float(line[7].replace(",",".").replace("-","0"))-float(line[6].replace(",","."))
+        total_amount = -float(line[6].replace(",","."))
         remaining_amount = total_amount
         amount_sources = {}
         while remaining_amount > 0:
@@ -120,7 +120,7 @@ for line in reversed(list(data)):
                 remaining_amount -= asset_sources[asset][oldest_available]
                 asset_sources[asset][oldest_available] = 0
         for date in amount_sources:
-            sale_amount = float(line[6].replace(",","."))-float(line[7].replace(",",".").replace("-","0"))
+            sale_amount = float(line[6].replace(",","."))
             buffer_sources[date] += sale_amount*amount_sources[date]/total_amount
     elif line[2] == "Utdelning":
         asset = line[3]
