@@ -6,7 +6,7 @@ from datetime import datetime
 class AssetDeficit(Exception):
     pass
 
-data_file = open("./data/isk.csv","r")
+data_file = open("./data/avanza_data.csv","r")
 data = csv.reader(data_file, delimiter=';')
 header_row = next(data)
 data = list(data)
@@ -217,7 +217,7 @@ while line_i >= 0:
         handle_sale(line,buffer_sources,asset_sources,deferred_lines)
     elif line[2] == "Utdelning":
         handle_dividend(line,buffer_sources)
-    elif "Utländsk källskatt" in line[2] or "Ränt" in line[2]:
+    elif "Utländsk källskatt" in line[2] or "Ränt" in line[2] or "Prelskatt" in line[2]:
         handle_fees(line,buffer_sources,deferred_lines)
     elif "Byte" in line[2]:
         handle_listing_change_from(line,listing_change)
