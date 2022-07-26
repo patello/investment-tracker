@@ -226,4 +226,36 @@ while line_i >= 0:
 
     line_i -= 1
 
+#Create monthly information summary
+month_info = {}
+
+start_date = datetime.strptime(data[-1][0],"%Y-%m-%d")
+start_date = start_date.replace(start_date.year,start_date.month,1)
+
+end_date = datetime.today()
+end_date = end_date.replace(end_date.year,end_date.month,1)
+
+month = start_date
+while month <= end_date:
+    if month in deposits:
+        month_deposit = deposits[month]
+    else:
+        month_deposit = 0
+    if month in withdrawals:
+        month_withdrawal = withdrawals[month]
+    else:
+        month_withdrawal = 0
+    if month in buffer_sources:
+        month_buffer = buffer_sources[month]
+    else:
+        month_buffer = 0
+
+    month_info[month] = {"month_deposit":month_deposit,"month_withdrawal":month_withdrawal,"month_buffer":month_buffer}
+
+    if month.month != 12:
+        month = month.replace(month.year,month.month+1,month.day)
+    else:
+        month = month.replace(month.year+1,1,month.day)
+
+
 data_file.close()
