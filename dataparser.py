@@ -3,6 +3,9 @@ import os
 
 from datetime import datetime
 
+class AssetDeficit(Exception):
+    pass
+
 data_file = open("./data/isk.csv","r")
 data = csv.reader(data_file, delimiter=';')
 header_row = next(data)
@@ -11,18 +14,21 @@ buffer_sources = {}
 asset_sources = {}
 deposits = {}
 withdrawals = {}
+defered_lines = []
 
 listing_change = {"change":False,"from_asset":"","from_amount":0,"to_asset":"","to_amount":0}
 
 def oldest_available_buffer(buffer_sources):
     oldest_available = max(buffer_sources)
+    deficit = False 
     for date in buffer_sources:
         if buffer_sources[date] > 0 and date < oldest_available:
             oldest_available = date
     if buffer_sources[oldest_available] <= 0:
-        #If we have a deficit, put it on the latest one
-        return max(buffer_sources)
-    return oldest_available
+        #If we have a deficit, put it on the latest one and return deficit True
+        deficit = True
+        return (max(buffer_sources),deficit)
+    return (oldest_available,deficit)
 
 def handle_deposit(line,buffer_sources,deposits):
     amount = float(line[6].replace(",","."))
@@ -40,18 +46,18 @@ def handle_withdrawal(line,buffer_sources,withdrawals):
     remaining_amount = total_amount
     withdrawal_sources = {}
     while remaining_amount > 0:
-        oldest_available = oldest_available_buffer(buffer_sources)
-        if buffer_sources[oldest_available] >= remaining_amount:
-            buffer_sources[oldest_available] -= remaining_amount
-            withdrawal_sources[oldest_available] = remaining_amount
-            remaining_amount = 0
-        elif buffer_sources[oldest_available] <= 0:
+        (oldest_available,deficit) = oldest_available_buffer(buffer_sources)
+        if deficit:
             #Deficit, put it here anyway
             buffer_sources[oldest_available] -= remaining_amount
             if oldest_available in withdrawal_sources:
                 withdrawal_sources[oldest_available] += remaining_amount
             else:
                 withdrawal_sources[oldest_available] = remaining_amount
+            remaining_amount = 0
+        elif buffer_sources[oldest_available] >= remaining_amount:
+            buffer_sources[oldest_available] -= remaining_amount
+            withdrawal_sources[oldest_available] = remaining_amount
             remaining_amount = 0
         else:
             withdrawal_sources[oldest_available] = buffer_sources[oldest_available]
@@ -70,12 +76,8 @@ def handle_purchase(line,buffer_sources,asset_sources):
     remaining_amount = total_amount
     amount_sources = {}
     while remaining_amount > 0:
-        oldest_available = oldest_available_buffer(buffer_sources)
-        if buffer_sources[oldest_available] >= remaining_amount:
-            buffer_sources[oldest_available] -= remaining_amount
-            amount_sources[oldest_available] = remaining_amount/total_amount
-            remaining_amount = 0
-        elif buffer_sources[oldest_available] <= 0:
+        (oldest_available,deficit) = oldest_available_buffer(buffer_sources)
+        if deficit:
             #Deficit, put it here anyway
             buffer_sources[oldest_available] -= remaining_amount
             if oldest_available in amount_sources:
@@ -83,6 +85,10 @@ def handle_purchase(line,buffer_sources,asset_sources):
             else:
                 amount_sources[oldest_available] = remaining_amount/total_amount
             remaining_amount = 0
+        elif buffer_sources[oldest_available] >= remaining_amount:
+            buffer_sources[oldest_available] -= remaining_amount
+            amount_sources[oldest_available] = remaining_amount/total_amount
+            remaining_amount = 0            
         else:
             amount_sources[oldest_available] = buffer_sources[oldest_available]/total_amount
             remaining_amount -= buffer_sources[oldest_available]
@@ -101,8 +107,10 @@ def handle_sale(line,buffer_sources,asset_sources):
     remaining_amount = total_amount
     amount_sources = {}
     while remaining_amount > 1e-3:
-        oldest_available = oldest_available_buffer(asset_sources[asset])
-        if asset_sources[asset][oldest_available] >= remaining_amount:
+        (oldest_available,deficit) = oldest_available_buffer(asset_sources[asset])
+        if deficit:
+            raise(AssetDeficit)
+        elif asset_sources[asset][oldest_available] >= remaining_amount:
             asset_sources[asset][oldest_available] -= remaining_amount
             amount_sources[oldest_available] = remaining_amount
             remaining_amount = 0
@@ -124,14 +132,14 @@ def handle_fees(line,buffer_sources):
     total_amount = -float(line[6].replace(",","."))
     remaining_amount = total_amount
     while remaining_amount > 0:
-        oldest_available = oldest_available_buffer(buffer_sources)
-        if buffer_sources[oldest_available] >= remaining_amount:
-            buffer_sources[oldest_available] -= remaining_amount
-            remaining_amount = 0
-        elif buffer_sources[oldest_available] <= 0:
+        (oldest_available,deficit) = oldest_available_buffer(buffer_sources)
+        if deficit:
             #Deficit, put it here anyway
             buffer_sources[oldest_available] -= remaining_amount
             remaining_amount = 0
+        elif buffer_sources[oldest_available] >= remaining_amount:
+            buffer_sources[oldest_available] -= remaining_amount
+            remaining_amount = 0            
         else:
             remaining_amount -= buffer_sources[oldest_available]
             buffer_sources[oldest_available] = 0
