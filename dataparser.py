@@ -226,6 +226,19 @@ while line_i >= 0:
 
     line_i -= 1
 
+#Create active asset summary
+active_asset_info = {}
+for asset in asset_sources:
+    active = False
+    amount = 0
+    for date in asset_sources[asset]:
+        if asset_sources[asset][date] > 1e-3:
+            active = True
+            amount += asset_sources[asset][date]
+    if active:
+        active_asset_info[asset] = {}
+        active_asset_info[asset]["amount"] = amount
+
 #Create monthly information summary
 month_info = {}
 
@@ -247,15 +260,21 @@ while month <= end_date:
         month_withdrawal = 0
     if month in buffer_sources:
         month_buffer = buffer_sources[month]
+        if month_buffer < 0:
+            month_buffer = 0
     else:
         month_buffer = 0
 
-    month_info[month] = {"month_deposit":month_deposit,"month_withdrawal":month_withdrawal,"month_buffer":month_buffer}
+    month_assets = {}
+    for asset in active_asset_info:
+        if month in asset_sources[asset]:
+            month_assets[asset] = asset_sources[asset][month]
+
+    month_info[month] = {"deposit":month_deposit,"withdrawal":month_withdrawal,"buffer":month_buffer,"assets":month_assets}
 
     if month.month != 12:
         month = month.replace(month.year,month.month+1,month.day)
     else:
         month = month.replace(month.year+1,1,month.day)
-
 
 data_file.close()
