@@ -1,6 +1,7 @@
 import csv
-import os
+import json
 
+from json import JSONDecodeError
 from datetime import datetime
 
 class AssetDeficit(Exception):
@@ -227,7 +228,12 @@ while line_i >= 0:
     line_i -= 1
 
 #Create active asset summary
-active_asset_info = {}
+asset_file = open("./data/asset_file.json","r+",encoding="utf-8") 
+try:
+    active_asset_info = json.load(asset_file)
+except JSONDecodeError:
+    active_asset_info = {}
+
 for asset in asset_sources:
     active = False
     amount = 0
@@ -238,6 +244,13 @@ for asset in asset_sources:
     if active:
         active_asset_info[asset] = {}
         active_asset_info[asset]["amount"] = amount
+    elif asset in active_asset_info:
+        del active_asset_info[asset]
+
+asset_file.seek(0)
+asset_file.write(json.dumps(active_asset_info))
+asset_file.truncate()
+asset_file.close()
 
 #Create monthly information summary
 month_info = {}
