@@ -16,35 +16,33 @@ for month in month_info:
     for asset in month_info[month]["assets"]:
         value += month_info[month]["assets"][asset]*asset_info[asset]["price"]
 
-    total_gainloss = withdrawal + buffer + value - deposited
+    month_info[month]["value"] = value
+    month_info[month]["total_gainloss"] = withdrawal + buffer + value - deposited
     if(withdrawal + buffer >= deposited or (withdrawal + buffer < deposited and value <= 0)):
-        realized_gainloss = withdrawal + buffer - deposited
+        month_info[month]["realized_gainloss"] = withdrawal + buffer - deposited
     else:
-        realized_gainloss = 0.0
-    unrealized_gainloss = total_gainloss - realized_gainloss
-
-    total_gainloss_str = str(int(round(total_gainloss,0)))
-    realized_gainloss_str = str(int(round(realized_gainloss,0)))
-    unrealized_gainloss_str = str(int(round(unrealized_gainloss,0)))
-
-    if deposited > 0:
-        total_gainloss_per = total_gainloss/deposited
-        realized_gainloss_per = realized_gainloss/deposited
-        unrealized_gainloss_per = unrealized_gainloss/deposited
-    else:
-        total_gainloss_per = 0
-        realized_gainloss_per = 0
-        unrealized_gainloss_per = 0
+        month_info[month]["realized_gainloss"] = 0.0
+    month_info[month]["unrealized_gainloss"] = month_info[month]["total_gainloss"] - month_info[month]["realized_gainloss"]
     
-    total_gainloss_per_str = str(int(round(100*total_gainloss_per,0)))+"%"
-    realized_gainloss_per_str = str(int(round(100*realized_gainloss_per,0)))+"%"
-    unrealized_gainloss_per_str = str(int(round(100*unrealized_gainloss_per,0)))+"%"
+    if deposited > 0:
+        month_info[month]["total_gainloss_per"] = 100*month_info[month]["total_gainloss"]/month_info[month]["deposit"]
+        month_info[month]["unrealized_gainloss_per"] = 100*month_info[month]["unrealized_gainloss"]/month_info[month]["deposit"]
+        month_info[month]["realized_gainloss_per"] = 100*month_info[month]["realized_gainloss"]/month_info[month]["deposit"]
+    else:
+        month_info[month]["total_gainloss_per"] = 0
+        month_info[month]["unrealized_gainloss_per"] = 0
+        month_info[month]["realized_gainloss_per"] = 0
 
-    print(month)
-    print("Gain/Loss (kr): {total} ({unrealized}/{realized})".format(
-        total=total_gainloss_str, unrealized = unrealized_gainloss_str, realized = realized_gainloss_str
-    ))
-    print("Gain/Loss (%): {total} ({unrealized}/{realized})".format(
-        total=total_gainloss_per_str, unrealized = unrealized_gainloss_per_str, realized = realized_gainloss_per_str
-    ))  
-    print("")
+def print_month():
+    for month in month_info:
+        if month_info[month]["deposit"] > 0:
+            print(month)
+            print("Deposited: {deposited:.0f}".format(deposited=month_info[month]["deposit"]))
+            print("Value: {value:.0f}".format(value=month_info[month]["value"]))
+            print("Withdrawal: {withdrawal:.0f}".format(withdrawal=month_info[month]["withdrawal"]))
+            print("Gain/Loss: {gainloss:.0f} ({gainloss_per:.1f}%)".format(gainloss=month_info[month]["total_gainloss"],gainloss_per=month_info[month]["total_gainloss_per"]))
+            print("- Unrealized: {gainloss:.0f} ({gainloss_per:.1f}%)".format(gainloss=month_info[month]["unrealized_gainloss"],gainloss_per=month_info[month]["unrealized_gainloss_per"]))
+            print("- Realized: {gainloss:.0f} ({gainloss_per:.1f}%)".format(gainloss=month_info[month]["realized_gainloss"],gainloss_per=month_info[month]["realized_gainloss_per"]))
+            print("")
+
+print_month()
