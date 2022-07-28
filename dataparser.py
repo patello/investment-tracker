@@ -228,7 +228,7 @@ while line_i >= 0:
     line_i -= 1
 
 #Create active asset summary
-asset_file = open("./data/asset_file.json","r+",encoding="utf-8") 
+asset_file = open("./data/asset_file.json","a+",encoding="utf-8") 
 try:
     active_asset_info = json.load(asset_file)
 except JSONDecodeError:
@@ -263,6 +263,7 @@ end_date = end_date.replace(end_date.year,end_date.month,1)
 
 month = start_date
 while month <= end_date:
+    month_str = datetime.strftime(month,"%Y-%m-%d")
     if month in deposits:
         month_deposit = deposits[month]
     else:
@@ -283,11 +284,16 @@ while month <= end_date:
         if month in asset_sources[asset]:
             month_assets[asset] = asset_sources[asset][month]
 
-    month_info[month] = {"deposit":month_deposit,"withdrawal":month_withdrawal,"buffer":month_buffer,"assets":month_assets}
+    month_info[month_str] = {"deposit":month_deposit,"withdrawal":month_withdrawal,"buffer":month_buffer,"assets":month_assets}
 
     if month.month != 12:
         month = month.replace(month.year,month.month+1,month.day)
     else:
         month = month.replace(month.year+1,1,month.day)
+
+
+month_file = open("./data/month_file.json","w") 
+month_file.write(json.dumps(month_info))
+month_file.close()
 
 data_file.close()
