@@ -33,6 +33,39 @@ for month in month_info:
         month_info[month]["unrealized_gainloss_per"] = 0
         month_info[month]["realized_gainloss_per"] = 0
 
+year_info = {}
+
+for month in month_info:
+    year = month.split("-")[0]
+    if year not in year_info:
+        year_info[year] = {
+            "deposit":0,
+            "withdrawal":0,
+            "buffer":0,
+            "value":0,
+            "total_gainloss":0,
+            "realized_gainloss":0,
+            "unrealized_gainloss":0
+        }
+
+    year_info[year]["deposit"] += month_info[month]["deposit"]
+    year_info[year]["withdrawal"] += month_info[month]["withdrawal"]
+    year_info[year]["buffer"] += month_info[month]["buffer"]
+    year_info[year]["value"] += month_info[month]["value"]
+    year_info[year]["total_gainloss"] += month_info[month]["total_gainloss"]
+    year_info[year]["realized_gainloss"] += month_info[month]["realized_gainloss"]
+    year_info[year]["unrealized_gainloss"] += month_info[month]["unrealized_gainloss"]
+
+for year in year_info:
+    if year_info[year]["deposit"] > 0:
+        year_info[year]["total_gainloss_per"] = 100*year_info[year]["total_gainloss"]/year_info[year]["deposit"]
+        year_info[year]["unrealized_gainloss_per"] = 100*year_info[year]["unrealized_gainloss"]/year_info[year]["deposit"]
+        year_info[year]["realized_gainloss_per"] = 100*year_info[year]["realized_gainloss"]/year_info[year]["deposit"]
+    else:
+        year_info[year]["total_gainloss_per"] = 0
+        year_info[year]["unrealized_gainloss_per"] = 0
+        year_info[year]["realized_gainloss_per"] = 0
+
 def print_month():
     for month in month_info:
         if month_info[month]["deposit"] > 0:
@@ -45,4 +78,20 @@ def print_month():
             print("- Realized: {gainloss:.0f} ({gainloss_per:.1f}%)".format(gainloss=month_info[month]["realized_gainloss"],gainloss_per=month_info[month]["realized_gainloss_per"]))
             print("")
 
+def print_year():
+    for year in year_info:
+        if year_info[year]["deposit"] > 0:
+            print(year)
+            print("Deposited: {deposited:.0f}".format(deposited=year_info[year]["deposit"]))
+            print("Value: {value:.0f}".format(value=year_info[year]["value"]))
+            print("Withdrawal: {withdrawal:.0f}".format(withdrawal=year_info[year]["withdrawal"]))
+            print("Gain/Loss: {gainloss:.0f} ({gainloss_per:.1f}%)".format(gainloss=year_info[year]["total_gainloss"],gainloss_per=year_info[year]["total_gainloss_per"]))
+            print("- Unrealized: {gainloss:.0f} ({gainloss_per:.1f}%)".format(gainloss=year_info[year]["unrealized_gainloss"],gainloss_per=year_info[year]["unrealized_gainloss_per"]))
+            print("- Realized: {gainloss:.0f} ({gainloss_per:.1f}%)".format(gainloss=year_info[year]["realized_gainloss"],gainloss_per=year_info[year]["realized_gainloss_per"]))
+            print("")
+
+print("--Monthly Info--")
 print_month()
+print()
+print("--Yearly Info--")
+print_year()
