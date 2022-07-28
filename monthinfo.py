@@ -1,5 +1,7 @@
 import json
 
+from datetime import datetime, timedelta
+
 asset_file = open("./data/asset_file.json","r")
 asset_info = json.load(asset_file)
 asset_file.close()
@@ -33,6 +35,12 @@ for month in month_info:
         month_info[month]["unrealized_gainloss_per"] = 0
         month_info[month]["realized_gainloss_per"] = 0
 
+    middle_date = datetime.strptime(month,"%Y-%m-%d").replace(day=15)
+    if datetime.today() >= middle_date + timedelta(365.25) and month_info[month]["total_gainloss_per"]!=0:
+        month_info[month]["annual_per_yield"] = 100*((month_info[month]["total_gainloss_per"]/100+1)**(1/((datetime.today()-middle_date).days/365.25))-1)
+    else:
+        month_info[month]["annual_per_yield"] = None
+
 year_info = {}
 
 for month in month_info:
@@ -65,6 +73,13 @@ for year in year_info:
         year_info[year]["total_gainloss_per"] = 0
         year_info[year]["unrealized_gainloss_per"] = 0
         year_info[year]["realized_gainloss_per"] = 0
+    
+    middle_date = datetime.strptime(year,"%Y").replace(month=7,day=1)
+    if datetime.today() >= middle_date + timedelta(365.25) and year_info[year]["total_gainloss_per"]!=0:
+        year_info[year]["annual_per_yield"] = 100*((year_info[year]["total_gainloss_per"]/100+1)**(1/((datetime.today()-middle_date).days/365.25))-1)
+    else:
+        year_info[year]["annual_per_yield"] = None
+
 
 def print_month():
     for month in month_info:
@@ -76,6 +91,8 @@ def print_month():
             print("Gain/Loss: {gainloss:.0f} ({gainloss_per:.1f}%)".format(gainloss=month_info[month]["total_gainloss"],gainloss_per=month_info[month]["total_gainloss_per"]))
             print("- Unrealized: {gainloss:.0f} ({gainloss_per:.1f}%)".format(gainloss=month_info[month]["unrealized_gainloss"],gainloss_per=month_info[month]["unrealized_gainloss_per"]))
             print("- Realized: {gainloss:.0f} ({gainloss_per:.1f}%)".format(gainloss=month_info[month]["realized_gainloss"],gainloss_per=month_info[month]["realized_gainloss_per"]))
+            if month_info[month]["annual_per_yield"] is not None:
+                print("APY: {apy:.1f}%".format(apy=month_info[month]["annual_per_yield"]))
             print("")
 
 def print_year():
@@ -88,6 +105,8 @@ def print_year():
             print("Gain/Loss: {gainloss:.0f} ({gainloss_per:.1f}%)".format(gainloss=year_info[year]["total_gainloss"],gainloss_per=year_info[year]["total_gainloss_per"]))
             print("- Unrealized: {gainloss:.0f} ({gainloss_per:.1f}%)".format(gainloss=year_info[year]["unrealized_gainloss"],gainloss_per=year_info[year]["unrealized_gainloss_per"]))
             print("- Realized: {gainloss:.0f} ({gainloss_per:.1f}%)".format(gainloss=year_info[year]["realized_gainloss"],gainloss_per=year_info[year]["realized_gainloss_per"]))
+            if year_info[year]["annual_per_yield"] is not None:
+                print("APY: {apy:.1f}%".format(apy=year_info[year]["annual_per_yield"]))
             print("")
 
 print("--Monthly Info--")
