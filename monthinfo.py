@@ -14,12 +14,12 @@ for month in month_info:
     deposited = month_info[month]["deposit"]
     withdrawal = month_info[month]["withdrawal"]
     buffer = month_info[month]["buffer"]
-    value = 0
+    value = buffer
     for asset in month_info[month]["assets"]:
         value += month_info[month]["assets"][asset]*asset_info[asset]["price"]
 
     month_info[month]["value"] = value
-    month_info[month]["total_gainloss"] = withdrawal + buffer + value - deposited
+    month_info[month]["total_gainloss"] = withdrawal + value - deposited
     if(withdrawal + buffer >= deposited or (withdrawal + buffer < deposited and value <= 0)):
         month_info[month]["realized_gainloss"] = withdrawal + buffer - deposited
     else:
@@ -80,6 +80,18 @@ for year in year_info:
     else:
         year_info[year]["annual_per_yield"] = None
 
+accumulated = []
+for month in month_info:
+    net_deposit = month_info[month]["deposit"] - month_info[month]["withdrawal"]
+    if net_deposit < 0:
+        net_deposit = 0
+    if len(accumulated) == 0:
+        if month_info[month]["value"]+month_info[month]["buffer"] > 0:
+            accumulated.append({"month":month,"deposit":net_deposit,"gainloss":month_info[month]["total_gainloss"]})
+    else:
+        accumulated.append({"month":month,"deposit":accumulated[-1]["deposit"]+net_deposit,"gainloss":accumulated[-1]["gainloss"]+month_info[month]["total_gainloss"]})
+
+
 
 def print_month():
     for month in month_info:
@@ -109,8 +121,14 @@ def print_year():
                 print("APY: {apy:.1f}%".format(apy=year_info[year]["annual_per_yield"]))
             print("")
 
+def print_accumulated():
+    for month in accumulated:
+        print("{month}: {deposit:.0f}, {gain_loss:.0f}".format(month=month["month"],deposit=month["deposit"],gain_loss=month["gainloss"]))
+
 print("--Monthly Info--")
 print_month()
 print()
 print("--Yearly Info--")
 print_year()
+#print("--Accumulated--")
+#print_accumulated()
