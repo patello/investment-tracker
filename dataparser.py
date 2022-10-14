@@ -1,5 +1,6 @@
 import csv
 import json
+import sqlite3
 
 from json import JSONDecodeError
 from datetime import datetime
@@ -7,225 +8,200 @@ from datetime import datetime
 class AssetDeficit(Exception):
     pass
 
-data_file = open("./data/avanza_data.csv","r")
-data = csv.reader(data_file, delimiter=';')
-header_row = next(data)
-data = list(data)
 
-buffer_sources = {}
-asset_sources = {}
-deposits = {}
-withdrawals = {}
-deferred_lines = {"deferred":False,"stop":0,"lines":[]}
+con = sqlite3.connect("data/asset_data.db", detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES)
+cur = con.cursor()
 
-listing_change = {"change":False,"from_asset":"","from_amount":0,"to_asset":"","to_amount":0}
+cur.execute("PRAGMA foreign_keys = ON;")
 
-def oldest_available_buffer(buffer_sources):
-    oldest_available = max(buffer_sources)
-    deficit = False 
-    for date in buffer_sources:
-        if buffer_sources[date] > 0 and date < oldest_available:
-            oldest_available = date
-    if buffer_sources[oldest_available] <= 0:
-        #If we have a deficit, put it on the latest one and return deficit True
-        deficit = True
-        return (max(buffer_sources),deficit)
-    return (oldest_available,deficit)
+cur.execute("""
+    CREATE TABLE IF NOT EXISTS month_data(
+        month DATE NOT NULL, 
+        deposit REAL DEFAULT 0,
+        withdrawal REAL DEFAULT 0,
+        capital REAL DEFAULT 0,
+        PRIMARY KEY(month)
+        );""")
 
-def handle_deposit(line,buffer_sources,deposits):
-    amount = float(line[6].replace(",","."))
-    if date in buffer_sources:
-        buffer_sources[date] += amount
+cur.execute("""
+    CREATE TABLE IF NOT EXISTS assets(
+        asset_id INTEGER,
+        asset TEXT UNIQUE NOT NULL, 
+        average_price REAL DEFAULT 0,
+        amount REAL DEFAULT 0,
+        latest_price REAL,
+        latest_price_date DATE,
+        PRIMARY KEY(asset_id)
+        );""")
+
+cur.execute("""
+    CREATE TABLE IF NOT EXISTS month_assets(
+        month DATE NOT NULL,
+        asset_id INTEGER NOT NULL,
+        amount REAL DEFAULT 0,
+        FOREIGN KEY (month) REFERENCES month_data (month), 
+        FOREIGN KEY (asset_id) REFERENCES assets (asset_id)
+        PRIMARY KEY(month, asset_id)
+        );""")
+
+
+listing_change = {"to_asset":None,"to_asset_amount":None,"to_rowid":None}
+
+def available_capital():
+    res = cur.execute("SELECT month, capital FROM month_data WHERE capital > 0 ORDER BY month ASC").fetchall()
+    if len(res) > 0:
+        return res
     else:
-        buffer_sources[date] = amount
-    if date in deposits:
-        deposits[date] += amount
+        return [(None,0)]
+
+def available_asset(asset_id):
+    res = cur.execute("SELECT month, amount FROM month_assets WHERE amount > 0 AND asset_id = ? ORDER BY month ASC",(asset_id,)).fetchall()
+    if len(res) > 0:
+        return res
     else:
-        deposits[date] = amount
+        return [(None,0)]
 
-def handle_withdrawal(line,buffer_sources,withdrawals,deferred_lines):
-    total_amount = -float(line[6].replace(",","."))
+
+def handle_deposit(row):
+    month = row[0].replace(day=1)
+    amount = row[6]
+    cur.execute("UPDATE month_data SET capital = capital + ?, deposit = deposit + ? WHERE month = ?",(amount,amount,month))
+    transaction_cur.execute("UPDATE transactions SET processed = 1 WHERE rowid = ?",(row[-1],))
+    transaction_cur.execute("SELECT *,rowid FROM transactions WHERE processed == 0 ORDER BY date ASC")
+
+def handle_withdrawal(row):
+    total_amount = -row[6]
     remaining_amount = total_amount
-    withdrawal_sources = {}
-    while remaining_amount > 0:
-        (oldest_available,deficit) = oldest_available_buffer(buffer_sources)
-        if not deferred_lines["deferred"] and deficit:
-            remainder_line = line
-            remainder_line[6] = str(-remaining_amount)
-            deferred_lines["lines"].append(remainder_line)
-            remaining_amount = 0
-        elif deferred_lines["deferred"] and deficit:
-            #Still deficit, put it here anyway
-            buffer_sources[oldest_available] -= remaining_amount
-            if oldest_available in withdrawal_sources:
-                withdrawal_sources[oldest_available] += remaining_amount
-            else:
-                withdrawal_sources[oldest_available] = remaining_amount
-            remaining_amount = 0
-        elif buffer_sources[oldest_available] >= remaining_amount:
-            buffer_sources[oldest_available] -= remaining_amount
-            withdrawal_sources[oldest_available] = remaining_amount
-            remaining_amount = 0
-        else:
-            withdrawal_sources[oldest_available] = buffer_sources[oldest_available]
-            remaining_amount -= buffer_sources[oldest_available]
-            buffer_sources[oldest_available] = 0
-    for date in withdrawal_sources:
-        if date in withdrawals:
-            withdrawals[date] += withdrawal_sources[date]
-        else:
-            withdrawals[date] = withdrawal_sources[date]
+    month_capital = available_capital()
+    total_capital = sum(e[1] for e in month_capital)
+    if total_capital + 1e-4 >= total_amount:
+        i = 0
+        while remaining_amount > 1e-4:
+            (oldest_available,capital) = month_capital[i]
+            month_amount = min(remaining_amount,capital)
+            cur.execute("UPDATE month_data SET capital = capital - ?, withdrawal = withdrawal + ? WHERE month = ?",(month_amount,month_amount,oldest_available))
+            remaining_amount -= month_amount
+            i += 1
+        transaction_cur.execute("UPDATE transactions SET processed = 1 WHERE rowid = ?",(row[-1],))
+        transaction_cur.execute("SELECT *,rowid FROM transactions WHERE processed == 0 ORDER BY date ASC")
 
-def handle_purchase(line,buffer_sources,asset_sources,deferred_lines):
-    asset = line[3]
-    asset_amount = float(line[4].replace(",","."))
-    remaining_asset_amount = asset_amount
-    total_amount = -float(line[6].replace(",","."))
+def handle_purchase(row):    
+    asset = row[3]
+    cur.execute("INSERT OR IGNORE INTO assets (asset) VALUES (?) ",(asset,))
+    asset_id = cur.execute("SELECT asset_id FROM assets WHERE asset = ?",(asset,)).fetchone()[0]
+    asset_amount = row[4]
+    total_amount = -row[6]+row[7]
     remaining_amount = total_amount
-    amount_sources = {}
-    while remaining_amount > 0:
-        (oldest_available,deficit) = oldest_available_buffer(buffer_sources)
-        if not deferred_lines["deferred"] and deficit:
-            remainder_line = line
-            remainder_line[6] = str(-remaining_amount)
-            remainder_line[4] = str(remaining_asset_amount)
-            deferred_lines["lines"].append(remainder_line)
-            remaining_amount = 0
-        elif deferred_lines["deferred"] and deficit:
-            #Deficit, put it here anyway
-            buffer_sources[oldest_available] -= remaining_amount
-            if oldest_available in amount_sources:
-                amount_sources[oldest_available] += remaining_amount/total_amount
-            else:
-                amount_sources[oldest_available] = remaining_amount/total_amount
-            remaining_amount = 0
-            remaining_asset_amount = 0
-        elif buffer_sources[oldest_available] >= remaining_amount:
-            buffer_sources[oldest_available] -= remaining_amount
-            amount_sources[oldest_available] = remaining_amount/total_amount
-            remaining_amount = 0  
-            remaining_asset_amount = 0          
-        else:
-            amount_sources[oldest_available] = buffer_sources[oldest_available]/total_amount
-            remaining_amount -= buffer_sources[oldest_available]
-            buffer_sources[oldest_available] = 0
-            remaining_asset_amount -= amount_sources[oldest_available]*asset_amount
-    if asset not in asset_sources:
-        asset_sources[asset] = {}
-    for date in amount_sources:
-        if date in asset_sources[asset]:
-            asset_sources[asset][date] += amount_sources[date]*asset_amount
-        else:
-            asset_sources[asset][date] = amount_sources[date]*asset_amount
+    month_capital = available_capital()
+    total_capital = sum(e[1] for e in month_capital)
+    if total_capital + 1e-4 >= total_amount:
+        i = 0
+        while remaining_amount > 1e-4:
+            (oldest_available,capital) = month_capital[i]
+            month_amount = min(remaining_amount,capital)
+            month_asset_amount = month_amount / total_amount * asset_amount
+            cur.execute("UPDATE month_data SET capital = capital - ? WHERE month = ?",(month_amount,oldest_available))
+            cur.execute("INSERT OR IGNORE INTO month_assets(month,asset_id) VALUES (?,?)",(oldest_available,asset_id))
+            cur.execute("UPDATE assets SET amount = amount + ? WHERE asset_id = ?",(month_asset_amount,asset_id))
+            cur.execute("UPDATE month_assets SET amount = amount + ? WHERE month = ? AND asset_id = ?",(month_asset_amount, oldest_available,asset_id))
+            remaining_amount -= month_amount
+            i += 1
+        transaction_cur.execute("UPDATE transactions SET processed = 1 WHERE rowid = ?",(row[-1],))
+        transaction_cur.execute("SELECT *,rowid FROM transactions WHERE processed == 0 ORDER BY date ASC")
+ 
+def handle_sale(row):    
+    asset = row[3]
+    cur.execute("INSERT OR IGNORE INTO assets (asset) VALUES (?) ",(asset,))
+    asset_id = cur.execute("SELECT asset_id FROM assets WHERE asset = ?",(asset,)).fetchone()[0]
+    asset_amount = -row[4]
+    total_amount = row[6]-row[7]
+    remaining_amount = asset_amount
+    month_asset_amounts = available_asset(asset_id)
+    total_asset_amount = sum(e[1] for e in month_asset_amounts)
+    if total_asset_amount + 1e-4 >= asset_amount:
+        i = 0
+        while remaining_amount > 1e-4:
+            (oldest_available,amount) = month_asset_amounts[i]
+            month_amount = min(remaining_amount,amount)
+            month_capital_amount = month_amount / asset_amount * total_amount
+            cur.execute("UPDATE month_assets SET amount = amount - ? WHERE month = ? AND asset_id = ?",(month_amount,oldest_available,asset_id))
+            cur.execute("UPDATE month_data SET capital = capital + ? WHERE month = ?",(month_capital_amount,oldest_available))
+            remaining_amount -= month_amount
+            i += 1
+        cur.execute("UPDATE assets SET amount = amount - ? WHERE asset_id = ?",(asset_amount,asset_id))
+        transaction_cur.execute("UPDATE transactions SET processed = 1 WHERE rowid = ?",(row[-1],))
+        transaction_cur.execute("SELECT *,rowid FROM transactions WHERE processed == 0 ORDER BY date ASC")
 
-def handle_sale(line,buffer_sources,asset_sources,deferred_lines):
-    asset = line[3]
-    total_amount = -float(line[4].replace(",","."))
+def handle_dividend(row):
+    asset = row[3]
+    asset_id = cur.execute("SELECT asset_id FROM assets WHERE asset = ?",(asset,)).fetchone()[0]
+    dividend_per_asset = row[5]
+    month_asset_amounts = available_asset(asset_id)
+    for (month,asset_amount) in month_asset_amounts:
+        cur.execute("UPDATE month_data SET capital = capital + ? WHERE month = ?",(asset_amount*dividend_per_asset,month))
+    transaction_cur.execute("UPDATE transactions SET processed = 1 WHERE rowid = ?",(row[-1],))
+    transaction_cur.execute("SELECT *,rowid FROM transactions WHERE processed == 0 ORDER BY date ASC")
+
+def handle_fees(row):
+    total_amount = -row[6]
     remaining_amount = total_amount
-    amount_sources = {}
-    while remaining_amount > 1e-3:
-        (oldest_available,deficit) = oldest_available_buffer(asset_sources[asset])
-        if not deferred_lines["deferred"] and deficit:
-            remainder_line = line
-            remainder_line[6] = str(-remaining_amount)
-            deferred_lines["lines"].append(remainder_line)
-            remaining_amount = 0
-        elif deferred_lines["deferred"] and deficit:
-            raise(AssetDeficit)
-        elif asset_sources[asset][oldest_available] >= remaining_amount:
-            asset_sources[asset][oldest_available] -= remaining_amount
-            amount_sources[oldest_available] = remaining_amount
-            remaining_amount = 0
-        else:
-            amount_sources[oldest_available] = asset_sources[asset][oldest_available]
-            remaining_amount -= asset_sources[asset][oldest_available]
-            asset_sources[asset][oldest_available] = 0
-    for date in amount_sources:
-        sale_amount = float(line[6].replace(",","."))
-        buffer_sources[date] += sale_amount*amount_sources[date]/total_amount
+    month_capital = available_capital()
+    total_capital = sum(e[1] for e in month_capital)
+    if total_capital + 1e-4 >= total_amount:
+        i = 0
+        while remaining_amount > 1e-4:
+            (oldest_available,capital) = month_capital[i]
+            month_amount = min(remaining_amount,capital)
+            cur.execute("UPDATE month_data SET capital = capital - ? WHERE month = ?",(month_amount,oldest_available))
+            remaining_amount -= month_amount
+            i += 1
+        transaction_cur.execute("UPDATE transactions SET processed = 1 WHERE rowid = ?",(row[-1],))
+        transaction_cur.execute("SELECT *,rowid FROM transactions WHERE processed == 0 ORDER BY date ASC")
 
-def handle_dividend(line,buffer_sources):
-    asset = line[3]
-    dividend_per_share = float(line[5].replace(",","."))
-    for date in asset_sources[asset]:
-        buffer_sources[date] += asset_sources[asset][date] * dividend_per_share
+def handle_listing_change(row):
+    global listing_change
+    if listing_change["to_asset"] is None:
+        listing_change["to_asset"] = row[3]
+        listing_change["to_asset_amount"] = row[4]
+        listing_change["to_rowid"] = row[-1]
+    else:
+        asset = row[3]
+        amount = -row[4]
+        (asset_id,) = cur.execute("SELECT asset_id FROM assets WHERE asset = ?",(asset,)).fetchone()
+        cur.execute("UPDATE assets SET asset = ?, amount = ? WHERE asset_id = ?",(listing_change["to_asset"],listing_change["to_asset_amount"],asset_id))
+        change_factor = listing_change["to_asset_amount"]/amount
+        cur.execute("UPDATE month_assets SET amount = amount * ? WHERE asset_id = ?",(change_factor,asset_id))
+        transaction_cur.execute("UPDATE transactions SET processed = 1 WHERE rowid = ? OR rowid = ?",(row[-1],listing_change["to_rowid"],))
+        transaction_cur.execute("SELECT *,rowid FROM transactions WHERE processed == 0 ORDER BY date ASC")
+        listing_change = {"to_asset":None,"to_asset_amount":None,"to_rowid":None}
 
-def handle_fees(line,buffer_sources,deferred_lines):
-    total_amount = -float(line[6].replace(",","."))
-    remaining_amount = total_amount
-    while remaining_amount > 0:
-        (oldest_available,deficit) = oldest_available_buffer(buffer_sources)
-        if not deferred_lines["deferred"] and deficit:
-            remainder_line = line
-            remainder_line[6] = str(-remaining_amount)
-            deferred_lines["lines"].append(remainder_line)
-            remaining_amount = 0
-        elif deferred_lines["deferred"] and deficit:
-            #Deficit, put it here anyway
-            buffer_sources[oldest_available] -= remaining_amount
-            remaining_amount = 0
-        elif buffer_sources[oldest_available] >= remaining_amount:
-            buffer_sources[oldest_available] -= remaining_amount
-            remaining_amount = 0            
-        else:
-            remaining_amount -= buffer_sources[oldest_available]
-            buffer_sources[oldest_available] = 0
-
-def handle_listing_change_from(line,listing_change):
-    listing_change["change"] = True
-    listing_change["from_asset"] = line[3]
-    listing_change["from_amount"] = -float(line[4].replace(",",".")) 
-
-def handle_listing_change_to(line,listing_change):
-    listing_change["change"] = False
-    listing_change["to_asset"] = line[3]
-    listing_change["to_amount"] = float(line[4].replace(",","."))
-    asset_sources[listing_change["to_asset"]] = asset_sources[listing_change["from_asset"]]
-    del asset_sources[listing_change["from_asset"]]
-    #Multiply each entry by the amount diference quotient 
-    for date in asset_sources[listing_change["to_asset"]]:
-        asset_sources[listing_change["to_asset"]][date] = asset_sources[listing_change["to_asset"]][date] * listing_change["to_amount"]/listing_change["from_amount"]
-
-line_i=len(data)-1
-while line_i >= 0:
-    line = data[line_i]
-    #Check if date is different from deferred lines
-    if len(deferred_lines["lines"])>0 and line[0] != deferred_lines["lines"][0][0]:
-        #Do two passes, first add sale events so that they are executed first
-        for deferred_line in deferred_lines["lines"]:
-            if deferred_line[2] == "Sälj":
-                data.insert(line_i+1,deferred_line)
-        for deferred_line in deferred_lines["lines"]:
-            if deferred_line[2] != "Sälj":
-                data.insert(line_i+1,deferred_line)
-        line_i += len(deferred_lines["lines"])
-        deferred_lines = {"deferred":True,"stop":line_i-len(deferred_lines["lines"]),"lines":[]}
-        line = data[line_i]
-    if deferred_lines["deferred"] and line_i <= deferred_lines["stop"]:
-        deferred_lines["deferred"] = False
-
-    date = datetime.strptime(line[0],"%Y-%m-%d")
+transaction_cur = con.cursor()
+unprocessed_lines = transaction_cur.execute("SELECT *,rowid FROM transactions WHERE processed == 0 ORDER BY date ASC")
+row = unprocessed_lines.fetchone()
+#Consider upgrading to python3.8 to make this more elegant with := statment
+while row is not None:
+    date = row[0]
     date = date.replace(date.year,date.month,1)
-    if listing_change["change"]:
-        handle_listing_change_to(line,listing_change)
-    elif line[2] == "Insättning":
-        handle_deposit(line,buffer_sources,deposits)
-    elif line[2] == "Uttag":
-        handle_withdrawal(line,buffer_sources,withdrawals,deferred_lines)
-    elif line[2] == "Köp":
-        handle_purchase(line,buffer_sources,asset_sources,deferred_lines)
-    elif line[2] == "Sälj":
-        handle_sale(line,buffer_sources,asset_sources,deferred_lines)
-    elif line[2] == "Utdelning":
-        handle_dividend(line,buffer_sources)
-    elif "Utländsk källskatt" in line[2] or "Ränt" in line[2] or "Prelskatt" in line[2]:
-        handle_fees(line,buffer_sources,deferred_lines)
-    elif "Byte" in line[2]:
-        handle_listing_change_from(line,listing_change)
+    cur.execute("INSERT OR IGNORE INTO month_data(month) VALUES(?)",(date,))
+    if row[2] == "Insättning":
+        handle_deposit(row)
+    elif row[2] == "Uttag":
+        handle_withdrawal(row)
+    elif row[2] == "Köp":
+        handle_purchase(row)
+    elif row[2] == "Sälj":
+        handle_sale(row)
+    elif row[2] == "Utdelning":
+        handle_dividend(row)
+    elif "Utländsk källskatt" in row[2] or "Ränt" in row[2] or "Prelskatt" in row[2]:
+        handle_fees(row)
+    elif "Byte" in row[2]:
+        handle_listing_change(row)
     else:
         raise(ValueError)
 
-    line_i -= 1
+    row = unprocessed_lines.fetchone()
+
 
 #Create active asset summary
 asset_file = open("./data/asset_file.json","a+",encoding="utf-8") 
