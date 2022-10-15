@@ -8,7 +8,6 @@ from datetime import datetime
 class AssetDeficit(Exception):
     pass
 
-
 con = sqlite3.connect("data/asset_data.db", detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES)
 cur = con.cursor()
 
@@ -90,13 +89,13 @@ def handle_purchase(row):
     cur.execute("INSERT OR IGNORE INTO assets (asset) VALUES (?) ",(asset,))
     asset_id = cur.execute("SELECT asset_id FROM assets WHERE asset = ?",(asset,)).fetchone()[0]
     asset_amount = row[4]
-    total_amount = -row[6]+row[7]
+    total_amount = -row[6]
     remaining_amount = total_amount
     month_capital = available_capital()
     total_capital = sum(e[1] for e in month_capital)
-    if total_capital + 1e-4 >= total_amount:
+    if total_capital + 1e-3 >= total_amount:
         i = 0
-        while remaining_amount > 1e-4:
+        while remaining_amount > 1e-3:
             (oldest_available,capital) = month_capital[i]
             month_amount = min(remaining_amount,capital)
             month_asset_amount = month_amount / total_amount * asset_amount
@@ -114,13 +113,13 @@ def handle_sale(row):
     cur.execute("INSERT OR IGNORE INTO assets (asset) VALUES (?) ",(asset,))
     asset_id = cur.execute("SELECT asset_id FROM assets WHERE asset = ?",(asset,)).fetchone()[0]
     asset_amount = -row[4]
-    total_amount = row[6]-row[7]
+    total_amount = row[6]
     remaining_amount = asset_amount
     month_asset_amounts = available_asset(asset_id)
     total_asset_amount = sum(e[1] for e in month_asset_amounts)
-    if total_asset_amount + 1e-4 >= asset_amount:
+    if total_asset_amount + 1e-3 >= asset_amount:
         i = 0
-        while remaining_amount > 1e-4:
+        while remaining_amount > 1e-3:
             (oldest_available,amount) = month_asset_amounts[i]
             month_amount = min(remaining_amount,amount)
             month_capital_amount = month_amount / asset_amount * total_amount
@@ -133,12 +132,17 @@ def handle_sale(row):
         transaction_cur.execute("SELECT *,rowid FROM transactions WHERE processed == 0 ORDER BY date ASC")
 
 def handle_dividend(row):
+    dividend_month = row[0].replace(day=1)
     asset = row[3]
     asset_id = cur.execute("SELECT asset_id FROM assets WHERE asset = ?",(asset,)).fetchone()[0]
+    remaining_amount = row[4]
     dividend_per_asset = row[5]
     month_asset_amounts = available_asset(asset_id)
     for (month,asset_amount) in month_asset_amounts:
-        cur.execute("UPDATE month_data SET capital = capital + ? WHERE month = ?",(asset_amount*dividend_per_asset,month))
+            cur.execute("UPDATE month_data SET capital = capital + ? WHERE month = ?",(asset_amount*dividend_per_asset,month))
+            remaining_amount -= asset_amount
+    if remaining_amount > 0:
+        cur.execute("UPDATE month_data SET capital = capital + ? WHERE month = ?",(remaining_amount*dividend_per_asset,dividend_month))
     transaction_cur.execute("UPDATE transactions SET processed = 1 WHERE rowid = ?",(row[-1],))
     transaction_cur.execute("SELECT *,rowid FROM transactions WHERE processed == 0 ORDER BY date ASC")
 
@@ -176,6 +180,7 @@ def handle_listing_change(row):
         listing_change = {"to_asset":None,"to_asset_amount":None,"to_rowid":None}
 
 transaction_cur = con.cursor()
+debug_cur = con.cursor()
 unprocessed_lines = transaction_cur.execute("SELECT *,rowid FROM transactions WHERE processed == 0 ORDER BY date ASC")
 row = unprocessed_lines.fetchone()
 #Consider upgrading to python3.8 to make this more elegant with := statment
@@ -199,77 +204,15 @@ while row is not None:
         handle_listing_change(row)
     else:
         raise(ValueError)
-
+    processed_sum = sum([x[0] for x in debug_cur.execute("SELECT total from transactions WHERE processed = 1").fetchall()])
+    capital_sum = sum([x[0] for x in debug_cur.execute("SELECT capital from month_data").fetchall()])
+    diff = capital_sum-processed_sum
+    if abs(diff) > 1:
+        print("Processed: "+str(processed_sum)+", Capital: "+str(capital_sum)+", Diff: "+str(diff))
     row = unprocessed_lines.fetchone()
 
-
-#Create active asset summary
-asset_file = open("./data/asset_file.json","a+",encoding="utf-8") 
-try:
-    active_asset_info = json.load(asset_file)
-except JSONDecodeError:
-    active_asset_info = {}
-
-for asset in asset_sources:
-    active = False
-    amount = 0
-    for date in asset_sources[asset]:
-        if asset_sources[asset][date] > 1e-3:
-            active = True
-            amount += asset_sources[asset][date]
-    if active:
-        active_asset_info[asset] = {}
-        active_asset_info[asset]["amount"] = amount
-    elif asset in active_asset_info:
-        del active_asset_info[asset]
-
-asset_file.seek(0)
-asset_file.write(json.dumps(active_asset_info))
-asset_file.truncate()
-asset_file.close()
-
-#Create monthly information summary
-month_info = {}
-
-start_date = datetime.strptime(data[-1][0],"%Y-%m-%d")
-start_date = start_date.replace(start_date.year,start_date.month,1)
-
-end_date = datetime.today()
-end_date = end_date.replace(end_date.year,end_date.month,1)
-
-month = start_date
-while month <= end_date:
-    month_str = datetime.strftime(month,"%Y-%m-%d")
-    if month in deposits:
-        month_deposit = deposits[month]
-    else:
-        month_deposit = 0
-    if month in withdrawals:
-        month_withdrawal = withdrawals[month]
-    else:
-        month_withdrawal = 0
-    if month in buffer_sources:
-        month_buffer = buffer_sources[month]
-        if month_buffer < 0:
-            month_buffer = 0
-    else:
-        month_buffer = 0
-
-    month_assets = {}
-    for asset in active_asset_info:
-        if month in asset_sources[asset]:
-            month_assets[asset] = asset_sources[asset][month]
-
-    month_info[month_str] = {"deposit":month_deposit,"withdrawal":month_withdrawal,"buffer":month_buffer,"assets":month_assets}
-
-    if month.month != 12:
-        month = month.replace(month.year,month.month+1,month.day)
-    else:
-        month = month.replace(month.year+1,1,month.day)
-
-
-month_file = open("./data/month_file.json","w") 
-month_file.write(json.dumps(month_info))
-month_file.close()
-
-data_file.close()
+unprocessed_lines = transaction_cur.execute("SELECT *,rowid FROM transactions WHERE processed == 0 ORDER BY date ASC")
+if unprocessed_lines.fetchone() is not None:
+    raise AssetDeficit
+else:
+    con.commit()
