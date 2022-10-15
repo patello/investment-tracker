@@ -216,11 +216,6 @@ while row is not None:
         handle_listing_change(row)
     else:
         raise(ValueError)
-    processed_sum = sum([x[0] for x in debug_cur.execute("SELECT total from transactions WHERE processed = 1").fetchall()])
-    capital_sum = sum([x[0] for x in debug_cur.execute("SELECT capital from month_data").fetchall()])
-    diff = capital_sum-processed_sum
-    if abs(diff) > 1:
-        print("Processed: "+str(processed_sum)+", Capital: "+str(capital_sum)+", Diff: "+str(diff))
     row = unprocessed_lines.fetchone()
 
 unprocessed_lines = transaction_cur.execute("SELECT *,rowid FROM transactions WHERE processed == 0 ORDER BY date ASC")
