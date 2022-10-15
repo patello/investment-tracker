@@ -1,13 +1,19 @@
 import requests
 import json
+import sqlite3
 
-asset_file = open("./data/asset_file.json","r+",encoding="utf-8")
-active_asset_info = json.load(asset_file)
+from datetime import datetime
+
+con = sqlite3.connect("data/asset_data.db", detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES)
+cur = con.cursor()
+
+assets = cur.execute("SELECT asset,asset_id FROM assets WHERE amount > 0").fetchall()
 
 url = "https://www.avanza.se/_cqbe/search/global-search/global-search-template?query={asset}"
 
-for asset in active_asset_info:
+today = datetime.today().date()
 
+for (asset,asset_id) in assets:
     url_name = asset
     #If asset has a slash, everything after the slash should be dropped
     if url_name.find("/") > 0:
@@ -19,9 +25,6 @@ for asset in active_asset_info:
         resp = json.loads(r.content)
         price = float(resp["resultGroups"][0]["hits"][0]["lastPrice"].replace(",","."))
 
-        active_asset_info[asset]["price"] = price
+        cur.execute("UPDATE assets SET latest_price = ?, latest_price_date = ? WHERE asset_id = ?",(price,today,asset_id))
 
-asset_file.seek(0)
-asset_file.write(json.dumps(active_asset_info))
-asset_file.truncate()
-asset_file.close()
+con.commit()
