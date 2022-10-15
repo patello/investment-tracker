@@ -25,9 +25,13 @@ cur.execute("""
 cur.execute("""
     CREATE TABLE IF NOT EXISTS assets(
         asset_id INTEGER,
-        asset TEXT UNIQUE NOT NULL, 
-        average_price REAL DEFAULT 0,
+        asset TEXT UNIQUE NOT NULL,
         amount REAL DEFAULT 0,
+        average_price REAL DEFAULT 0,
+        average_purchase_price REAL DEFAULT 0,
+        average_sale_price REAL DEFAULT 0,
+        purchased_amount REAL DEFAULT 0,
+        sold_amount REAL DEFAULT 0,
         latest_price REAL,
         latest_price_date DATE,
         PRIMARY KEY(asset_id)
@@ -38,6 +42,11 @@ cur.execute("""
         month DATE NOT NULL,
         asset_id INTEGER NOT NULL,
         amount REAL DEFAULT 0,
+        average_price REAL DEFAULT 0,
+        average_purchase_price REAL DEFAULT 0,
+        average_sale_price REAL DEFAULT 0,
+        purchased_amount REAL DEFAULT 0,
+        sold_amount REAL DEFAULT 0,
         FOREIGN KEY (month) REFERENCES month_data (month), 
         FOREIGN KEY (asset_id) REFERENCES assets (asset_id)
         PRIMARY KEY(month, asset_id)
@@ -89,6 +98,7 @@ def handle_purchase(row):
     cur.execute("INSERT OR IGNORE INTO assets (asset) VALUES (?) ",(asset,))
     asset_id = cur.execute("SELECT asset_id FROM assets WHERE asset = ?",(asset,)).fetchone()[0]
     asset_amount = row[4]
+    price = row[5]
     total_amount = -row[6]
     remaining_amount = total_amount
     month_capital = available_capital()
@@ -101,8 +111,9 @@ def handle_purchase(row):
             month_asset_amount = month_amount / total_amount * asset_amount
             cur.execute("UPDATE month_data SET capital = capital - ? WHERE month = ?",(month_amount,oldest_available))
             cur.execute("INSERT OR IGNORE INTO month_assets(month,asset_id) VALUES (?,?)",(oldest_available,asset_id))
-            cur.execute("UPDATE assets SET amount = amount + ? WHERE asset_id = ?",(month_asset_amount,asset_id))
-            cur.execute("UPDATE month_assets SET amount = amount + ? WHERE month = ? AND asset_id = ?",(month_asset_amount, oldest_available,asset_id))
+            cur.execute("UPDATE month_assets SET average_price = ?/(amount+?)*?+amount/(amount+?)*average_price WHERE month = ? AND asset_id = ?",(month_amount,month_amount,price,month_amount,oldest_available,asset_id))
+            cur.execute("UPDATE month_assets SET average_purchase_price = ?/(purchased_amount+?)*?+purchased_amount/(purchased_amount+?)*average_purchase_price WHERE month = ? AND asset_id = ?",(month_amount,month_amount,price,month_amount,oldest_available,asset_id))
+            cur.execute("UPDATE month_assets SET amount = amount + ?, purchased_amount = purchased_amount + ? WHERE month = ? AND asset_id = ?",(month_asset_amount, month_asset_amount, oldest_available,asset_id))
             remaining_amount -= month_amount
             i += 1
         transaction_cur.execute("UPDATE transactions SET processed = 1 WHERE rowid = ?",(row[-1],))
@@ -113,6 +124,7 @@ def handle_sale(row):
     cur.execute("INSERT OR IGNORE INTO assets (asset) VALUES (?) ",(asset,))
     asset_id = cur.execute("SELECT asset_id FROM assets WHERE asset = ?",(asset,)).fetchone()[0]
     asset_amount = -row[4]
+    price = row[5]
     total_amount = row[6]
     remaining_amount = asset_amount
     month_asset_amounts = available_asset(asset_id)
@@ -123,11 +135,11 @@ def handle_sale(row):
             (oldest_available,amount) = month_asset_amounts[i]
             month_amount = min(remaining_amount,amount)
             month_capital_amount = month_amount / asset_amount * total_amount
-            cur.execute("UPDATE month_assets SET amount = amount - ? WHERE month = ? AND asset_id = ?",(month_amount,oldest_available,asset_id))
+            cur.execute("UPDATE month_assets SET average_sale_price = ?/(sold_amount+?)*?+sold_amount/(sold_amount+?)*average_sale_price WHERE month = ? AND asset_id = ?",(month_amount,month_amount,price,month_amount,oldest_available,asset_id))
+            cur.execute("UPDATE month_assets SET amount = amount - ?, sold_amount = sold_amount + ? WHERE month = ? AND asset_id = ?",(month_amount, month_amount, oldest_available,asset_id))
             cur.execute("UPDATE month_data SET capital = capital + ? WHERE month = ?",(month_capital_amount,oldest_available))
             remaining_amount -= month_amount
             i += 1
-        cur.execute("UPDATE assets SET amount = amount - ? WHERE asset_id = ?",(asset_amount,asset_id))
         transaction_cur.execute("UPDATE transactions SET processed = 1 WHERE rowid = ?",(row[-1],))
         transaction_cur.execute("SELECT *,rowid FROM transactions WHERE processed == 0 ORDER BY date ASC")
 
@@ -215,4 +227,27 @@ unprocessed_lines = transaction_cur.execute("SELECT *,rowid FROM transactions WH
 if unprocessed_lines.fetchone() is not None:
     raise AssetDeficit
 else:
+    #Calculate summary data and put it in asset table
+    asset_ids = cur.execute("SELECT asset_id FROM assets").fetchall()
+    for (id,) in asset_ids:
+        month_asset_data = cur.execute("SELECT amount, average_price, average_purchase_price, average_sale_price, purchased_amount, sold_amount FROM month_assets WHERE asset_id = ?",(id,)).fetchall()
+        amount = 0
+        average_price = 0
+        average_purchase_price = 0
+        average_sale_price = 0
+        purchased_amount = 0
+        sold_amount = 0
+        for month_asset in month_asset_data:
+            month_amount, month_average_price, month_average_purchase_price, month_average_sale_price, month_purchased_amount, month_sold_amount = month_asset
+            if month_amount > 1e-3:
+                average_price = month_amount/(month_amount+amount)*month_average_price+amount/(month_amount+amount)*average_price
+                amount += month_amount
+            if month_purchased_amount > 1e-3:
+                average_purchase_price = month_purchased_amount/(month_purchased_amount+purchased_amount)*month_average_purchase_price+purchased_amount/(month_purchased_amount+purchased_amount)*average_purchase_price
+                purchased_amount += month_purchased_amount
+            if month_sold_amount > 1e-3:
+                average_sale_price = month_sold_amount/(month_sold_amount+sold_amount)*month_average_sale_price+sold_amount/(month_sold_amount+sold_amount)*average_sale_price
+                sold_amount += month_sold_amount
+        cur.execute("UPDATE assets SET amount = ?, average_price = ?, average_purchase_price = ?, average_sale_price = ?, purchased_amount = ?, sold_amount = ? WHERE asset_id = ?",(amount,average_price,average_purchase_price,average_sale_price,purchased_amount,sold_amount,id,)).fetchall()
+    #Commit changes
     con.commit()
