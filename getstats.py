@@ -51,8 +51,22 @@ def get_accumulated(period = "month",deposits = "current"):
         raise ValueError((period,deposits))
     return acc_stats
 
+def get_accumulated_stacked(period = "month",deposits = "current"):
+    acc_stats = get_accumulated(period = period, deposits = deposits)
+    dates = [x[0].strftime("%Y-%m-%d") for x in acc_stats]
+    y_deposit = [x[1] for x in acc_stats]
+    y_gainloss = [x[2] for x in acc_stats]
+    return (dates,y_deposit,y_gainloss)
+
+def get_accumulated_gainloss(period = "month",deposits = "current"):
+    acc_stats = get_accumulated(period = period, deposits = deposits)
+    dates = [x[0].strftime("%Y-%m-%d") for x in acc_stats]
+    y_deposit = [x[1] for x in acc_stats]
+    y_gainloss = [x[3] for x in acc_stats]
+    return (dates,y_deposit,y_gainloss)
+
 def print_accumulated(period = "month",deposits = "current"):
-    acc_stats = get_accumulated(period = period,deposits = deposits)
+    acc_stats = get_accumulated(period = period, deposits = deposits)
     print("Date, Deposit, Value, Gain/Loss")
     for (date, acc_net_deposit, acc_value, acc_gainloss) in acc_stats:
         print("{date}: {deposit:.0f}, {value:.0f}, {gain_loss:.0f}".format(date= date,deposit=acc_net_deposit,value=acc_value,gain_loss=acc_gainloss))
@@ -96,6 +110,7 @@ def print_accumulated(period = "month",deposits = "current"):
         print("{date}: {deposit:.0f}, {value:.0f}, {gain_loss:.0f}".format(date= date,deposit=acc_net_deposit,value=acc_value,gain_loss=acc_gainloss))
 
 if __name__ == "__main__":
+    get_accumulated_gainloss(period = "year",deposits = "all")
     print("--Monthly Info--")
     print_stats(period="month")
     print("> Accumulated")
