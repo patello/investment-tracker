@@ -31,18 +31,26 @@ def print_stats(period = "month"):
                 print("APY: {apy:.1f}%".format(apy=annual_per_yield))
             print("")
 
-def print_accumulated(period = "month"):
-    if period == "month":
+def print_accumulated(period = "month",deposits = "current"):
+    if period == "month" and deposits == "current":
         acc_stats = cur.execute("""
-            SELECT month, acc_net_deposit, acc_value, acc_gainloss
+            SELECT month, acc_net_deposit, acc_value, acc_unrealized_gainloss
+            FROM month_stats WHERE value > 0 ORDER BY month ASC""").fetchall()
+    elif period == "month" and deposits == "all":
+        acc_stats = cur.execute("""
+            SELECT month, acc_deposit, acc_value, acc_total_gainloss
             FROM month_stats ORDER BY month ASC""").fetchall()
-    elif period == "year":
+    elif period == "year" and deposits == "current":
         acc_stats = cur.execute("""
-            SELECT year, acc_net_deposit, acc_value, acc_gainloss
+            SELECT year, acc_net_deposit, acc_value, acc_unrealized_gainloss
+            FROM year_stats WHERE value > 0 ORDER BY year ASC""").fetchall()
+    elif period == "year" and deposits == "all":
+        acc_stats = cur.execute("""
+            SELECT year, acc_deposit, acc_value, acc_total_gainloss
             FROM year_stats ORDER BY year ASC""").fetchall()
     else:
-        raise ValueError(period)
-    print("Date, Net Deposit, Value, Gain/Loss")
+        raise ValueError((period,deposits))
+    print("Date, Deposit, Value, Gain/Loss")
     for (date, acc_net_deposit, acc_value, acc_gainloss) in acc_stats:
         print("{date}: {deposit:.0f}, {value:.0f}, {gain_loss:.0f}".format(date= date,deposit=acc_net_deposit,value=acc_value,gain_loss=acc_gainloss))
 
