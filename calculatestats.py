@@ -6,7 +6,7 @@ cur = con.cursor()
 
 cur.execute("PRAGMA foreign_keys = ON;")
 
-cur.execute("DROP TABLE month_stats")
+cur.execute("DROP TABLE IF EXISTS month_stats")
 cur.execute("""
     CREATE TABLE month_stats(
         month DATE NOT NULL,
@@ -28,14 +28,13 @@ cur.execute("""
         acc_total_gainloss REAL DEFAULT 0,
         acc_realized_gainloss REAL DEFAULT 0,
         acc_unrealized_gainloss REAL DEFAULT 0,
-        FOREIGN KEY (month) REFERENCES month_data (month), 
         PRIMARY KEY(month)
         );""")
 
-cur.execute("DROP TABLE year_stats")
+cur.execute("DROP TABLE IF EXISTS year_stats")
 cur.execute("""
     CREATE TABLE year_stats(
-        year INT NOT NULL,
+        year DATE NOT NULL,
         deposit REAL DEFAULT 0,
         withdrawal REAL DEFAULT 0,
         capital REAL DEFAULT 0,
@@ -105,6 +104,11 @@ for (month, deposit, withdrawal, capital) in month_data:
     acc_realized_gainloss += realized_gainloss
     acc_unrealized_gainloss += unrealized_gainloss
 
+    today = datetime.today().date()
+
+    if month >= today.replace(day=1):
+        month = today
+
     cur.execute("""
         INSERT INTO month_stats(
             month,deposit,withdrawal,capital,value,
@@ -121,7 +125,10 @@ for (month, deposit, withdrawal, capital) in month_data:
 
 month_stats = cur.execute("SELECT month, deposit, withdrawal, capital, value FROM month_stats").fetchall()
 for (month, deposit, withdrawal, capital, value) in month_stats:
-    year = month.year
+    if month.year < today.year:
+        year = month.replace(month=12,day=31)
+    else:
+        year = today
     cur.execute("INSERT OR IGNORE INTO year_stats(year) VALUES(?)",(year,))
     cur.execute("""
         UPDATE year_stats SET deposit = deposit + ?, withdrawal = withdrawal + ?, capital = capital + ?,
@@ -147,7 +154,7 @@ for (year, deposit, withdrawal, capital, value) in year_stats:
         unrealized_gainloss_per = 0
         realized_gainloss_per = 0
 
-    middle_date = datetime(year=year,month=7,day=1).date()
+    middle_date = datetime(year=year.year,month=7,day=1).date()
     if datetime.today().date() >= middle_date + timedelta(365.25) and total_gainloss_per !=0:
         annual_per_yield = 100*((total_gainloss_per/100+1)**(1/((datetime.today().date()-middle_date).days/365.25))-1)
     else:
@@ -156,7 +163,7 @@ for (year, deposit, withdrawal, capital, value) in year_stats:
     (acc_deposit, acc_value, acc_withdrawal, acc_total_gainloss, acc_realized_gainloss, acc_unrealized_gainloss) = cur.execute("""
         SELECT acc_deposit, acc_value, acc_withdrawal, acc_total_gainloss, acc_realized_gainloss, acc_unrealized_gainloss FROM month_stats 
         WHERE month >= ? AND month <= ? ORDER BY month DESC LIMIT 1""",\
-        (datetime(year=year,month=1,day=1).date(),datetime(year=year,month=12,day=31).date())).fetchone()
+        (datetime(year=year.year,month=1,day=1).date(),datetime(year=year.year,month=12,day=31).date())).fetchone()
     net_deposit = deposit - withdrawal
     if net_deposit > 0:
         acc_net_deposit += net_deposit

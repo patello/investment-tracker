@@ -1,4 +1,5 @@
 import sqlite3
+import calendar
 
 class AssetDeficit(Exception):
     pass
@@ -66,7 +67,7 @@ def available_asset(asset_id):
 
 
 def handle_deposit(row):
-    month = row[0].replace(day=1)
+    month = row[0].replace(day=calendar.monthrange(row[0].year, row[0].month)[1])
     amount = row[6]
     cur.execute("UPDATE month_data SET capital = capital + ?, deposit = deposit + ? WHERE month = ?",(amount,amount,month))
     transaction_cur.execute("UPDATE transactions SET processed = 1 WHERE rowid = ?",(row[-1],))
@@ -139,7 +140,7 @@ def handle_sale(row):
         transaction_cur.execute("SELECT *,rowid FROM transactions WHERE processed == 0 ORDER BY date ASC")
 
 def handle_dividend(row):
-    dividend_month = row[0].replace(day=1)
+    dividend_month = row[0].replace(day=calendar.monthrange(row[0].year, row[0].month)[1])
     asset = row[3]
     asset_id = cur.execute("SELECT asset_id FROM assets WHERE asset = ?",(asset,)).fetchone()[0]
     remaining_amount = row[4]
@@ -192,8 +193,7 @@ unprocessed_lines = transaction_cur.execute("SELECT *,rowid FROM transactions WH
 row = unprocessed_lines.fetchone()
 #Consider upgrading to python3.8 to make this more elegant with := statment
 while row is not None:
-    date = row[0]
-    date = date.replace(date.year,date.month,1)
+    date = row[0].replace(day=calendar.monthrange(row[0].year, row[0].month)[1])
     cur.execute("INSERT OR IGNORE INTO month_data(month) VALUES(?)",(date,))
     if row[2] == "Insättning":
         handle_deposit(row)
