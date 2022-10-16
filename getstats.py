@@ -5,19 +5,60 @@ cur = con.cursor()
 
 cur.execute("PRAGMA foreign_keys = ON;")
 
-def print_stats(period = "month"):
-    if period == "month":
+def get_stats(period = "month", deposits = "current"):
+    if period == "month" and deposits == "current":
+        stats = cur.execute("""
+            SELECT month, deposit, withdrawal, value, total_gainloss, realized_gainloss, unrealized_gainloss,
+            total_gainloss_per, realized_gainloss_per, unrealized_gainloss_per, annual_per_yield
+            FROM month_stats WHERE value > 0 ORDER BY month ASC""").fetchall()
+    elif period == "month" and deposits == "all":
         stats = cur.execute("""
             SELECT month, deposit, withdrawal, value, total_gainloss, realized_gainloss, unrealized_gainloss,
             total_gainloss_per, realized_gainloss_per, unrealized_gainloss_per, annual_per_yield
             FROM month_stats ORDER BY month ASC""").fetchall()
-    elif period == "year":
+    elif period == "year" and deposits == "current":
+        stats = cur.execute("""
+            SELECT year, deposit, withdrawal, value, total_gainloss, realized_gainloss, unrealized_gainloss,
+            total_gainloss_per, realized_gainloss_per, unrealized_gainloss_per, annual_per_yield
+            FROM year_stats WHERE value > 0 ORDER BY year ASC""").fetchall()
+    elif period == "year" and deposits == "all":
         stats = cur.execute("""
             SELECT year, deposit, withdrawal, value, total_gainloss, realized_gainloss, unrealized_gainloss,
             total_gainloss_per, realized_gainloss_per, unrealized_gainloss_per, annual_per_yield
             FROM year_stats ORDER BY year ASC""").fetchall()
     else:
         raise ValueError(period)
+    return stats
+        
+def get_accumulated(period = "month",deposits = "current"):
+    if period == "month" and deposits == "current":
+        acc_stats = cur.execute("""
+            SELECT month, acc_net_deposit, acc_value, acc_unrealized_gainloss
+            FROM month_stats WHERE value > 0 ORDER BY month ASC""").fetchall()
+    elif period == "month" and deposits == "all":
+        acc_stats = cur.execute("""
+            SELECT month, acc_deposit, acc_value, acc_total_gainloss
+            FROM month_stats ORDER BY month ASC""").fetchall()
+    elif period == "year" and deposits == "current":
+        acc_stats = cur.execute("""
+            SELECT year, acc_net_deposit, acc_value, acc_unrealized_gainloss
+            FROM year_stats WHERE value > 0 ORDER BY year ASC""").fetchall()
+    elif period == "year" and deposits == "all":
+        acc_stats = cur.execute("""
+            SELECT year, acc_deposit, acc_value, acc_total_gainloss
+            FROM year_stats ORDER BY year ASC""").fetchall()
+    else:
+        raise ValueError((period,deposits))
+    return acc_stats
+
+def print_accumulated(period = "month",deposits = "current"):
+    acc_stats = get_accumulated(period = period,deposits = deposits)
+    print("Date, Deposit, Value, Gain/Loss")
+    for (date, acc_net_deposit, acc_value, acc_gainloss) in acc_stats:
+        print("{date}: {deposit:.0f}, {value:.0f}, {gain_loss:.0f}".format(date= date,deposit=acc_net_deposit,value=acc_value,gain_loss=acc_gainloss))
+
+def print_stats(period = "month", deposits = "current"):
+    stats = get_stats(period = period, deposits = deposits)
     for (date, deposit, withdrawal, value, total_gainloss, realized_gainloss, unrealized_gainloss,total_gainloss_per, realized_gainloss_per, unrealized_gainloss_per, annual_per_yield) in stats:
         if deposit > 0:
             print(date)
@@ -54,12 +95,13 @@ def print_accumulated(period = "month",deposits = "current"):
     for (date, acc_net_deposit, acc_value, acc_gainloss) in acc_stats:
         print("{date}: {deposit:.0f}, {value:.0f}, {gain_loss:.0f}".format(date= date,deposit=acc_net_deposit,value=acc_value,gain_loss=acc_gainloss))
 
-print("--Monthly Info--")
-print_stats(period="month")
-print("> Accumulated")
-print_accumulated(period = "month")
-print()
-print("--Yearly Info--")
-print_stats(period="year")
-print("> Accumulated")
-print_accumulated(period = "year")
+if __name__ == "__main__":
+    print("--Monthly Info--")
+    print_stats(period="month")
+    print("> Accumulated")
+    print_accumulated(period = "month")
+    print()
+    print("--Yearly Info--")
+    print_stats(period="year")
+    print("> Accumulated")
+    print_accumulated(period = "year")
