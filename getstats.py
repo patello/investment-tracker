@@ -65,6 +65,18 @@ def get_accumulated_gainloss(**kwargs):
     y_gainloss = [x[3] for x in acc_stats]
     return (dates,y_deposit,y_gainloss)
 
+def get_bar_data(**kwargs):
+    acc_stats = get_stats(**kwargs)
+    dates = [x[0].strftime("%Y-%m-%d") for x in acc_stats]
+    deposited = [x[1] for x in acc_stats]
+    withdrawn = [x[2] for x in acc_stats]
+    realized_gain = [x[5] if x[5] > 0 else 0 for x in acc_stats]
+    realized_loss = [-x[5] if x[5] < 0 else 0 for x in acc_stats]
+    unrealized_gain = [x[6] if x[6] > 0 else 0 for x in acc_stats]
+    unrealized_loss = [-x[6] if x[6] < 0 else 0 for x in acc_stats]
+    deposited = [x[0]+x[1]-x[2]-x[3]-x[4] for x in zip(deposited,realized_gain,unrealized_loss,realized_loss,withdrawn)]
+    return (dates,deposited,withdrawn,realized_gain,realized_loss,unrealized_gain,unrealized_loss)
+
 def print_accumulated(**kwargs):
     acc_stats = get_accumulated(**kwargs)
     print("Date, Deposit, Value, Gain/Loss")
@@ -87,7 +99,6 @@ def print_stats(**kwargs):
             print("")
 
 if __name__ == "__main__":
-    get_accumulated_gainloss(period = "year",deposits = "all")
     print("--Monthly Info--")
     print_stats(period="month")
     print("> Accumulated")
