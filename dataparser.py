@@ -1,6 +1,8 @@
 import sqlite3
 import calendar
 
+from datetime import date
+
 class AssetDeficit(Exception):
     pass
 
@@ -51,6 +53,24 @@ cur.execute("""
 
 listing_change = {"to_asset":None,"to_asset_amount":None,"to_rowid":None}
 
+def allocate_to_month(transaction_date):
+    #Takes a date and returns which month the transaction should be allocated to.
+    #If the transaction is made within the first cutoff_days of the month, allocate it to the previous month
+    cutoff_days = 10
+    day = transaction_date.day
+    month = transaction_date.month
+    year = transaction_date.year
+
+    if day <= cutoff_days:
+        if month > 1:
+            month = month - 1
+        else:
+            month = 12
+            year = year - 1
+    
+    day = calendar.monthrange(year,month)[1]
+    return date(year,month,day)
+
 def available_capital():
     res = cur.execute("SELECT month, capital FROM month_data WHERE capital > 0 ORDER BY month ASC").fetchall()
     if len(res) > 0:
@@ -65,9 +85,8 @@ def available_asset(asset_id):
     else:
         return [(None,0)]
 
-
 def handle_deposit(row):
-    month = row[0].replace(day=calendar.monthrange(row[0].year, row[0].month)[1])
+    month = allocate_to_month(row[0])
     amount = row[6]
     cur.execute("UPDATE month_data SET capital = capital + ?, deposit = deposit + ? WHERE month = ?",(amount,amount,month))
     transaction_cur.execute("UPDATE transactions SET processed = 1 WHERE rowid = ?",(row[-1],))
@@ -140,7 +159,7 @@ def handle_sale(row):
         transaction_cur.execute("SELECT *,rowid FROM transactions WHERE processed == 0 ORDER BY date ASC")
 
 def handle_dividend(row):
-    dividend_month = row[0].replace(day=calendar.monthrange(row[0].year, row[0].month)[1])
+    dividend_month = allocate_to_month(row[0])
     asset = row[3]
     asset_id = cur.execute("SELECT asset_id FROM assets WHERE asset = ?",(asset,)).fetchone()[0]
     remaining_amount = row[4]
@@ -193,8 +212,8 @@ unprocessed_lines = transaction_cur.execute("SELECT *,rowid FROM transactions WH
 row = unprocessed_lines.fetchone()
 #Consider upgrading to python3.8 to make this more elegant with := statment
 while row is not None:
-    date = row[0].replace(day=calendar.monthrange(row[0].year, row[0].month)[1])
-    cur.execute("INSERT OR IGNORE INTO month_data(month) VALUES(?)",(date,))
+    month = allocate_to_month(row[0])
+    cur.execute("INSERT OR IGNORE INTO month_data(month) VALUES(?)",(month,))
     if row[2] == "Insättning":
         handle_deposit(row)
     elif row[2] == "Uttag":
