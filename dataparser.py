@@ -224,7 +224,7 @@ while row is not None:
         handle_sale(row)
     elif row[2] == "Utdelning":
         handle_dividend(row)
-    elif "Utländsk källskatt" in row[2] or "Ränt" in row[2] or "Prelskatt" in row[2]:
+    elif "Utländsk källskatt" in row[2] or "Ränt" in row[2] or "Prelskatt" in row[2] or "Preliminärskatt" in row[2]:
         handle_fees(row)
     elif "Byte" in row[2] or row[2] == "Övrigt":
         handle_listing_change(row)
