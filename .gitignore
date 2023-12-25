@@ -1,1 +1,8 @@
+#Personal data files
 /data/
+
+#Temporary python files
+*.pyc
+*.pyo
+*.pyd
+__pycache__/

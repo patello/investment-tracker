@@ -1,0 +1,41 @@
+[
+    {
+        "condition": [{
+            "index":3,
+            "value":"DNB SMB"
+            },
+            {
+            "index":0,
+            "value":"2022-12-12",
+            "operator":"<="
+            }],
+        "replacement":[{
+            "index":3,
+            "value":"DNB SMB A"
+        }]
+    },
+    {
+        "condition": [{
+            "index":1,
+            "value":"One Replacement"
+            }],
+        "replacement":[{
+            "index":2,
+            "value":"Replaced"
+        }]
+    },
+    {
+        "condition": [{
+            "index":1,
+            "value":"Two Replacements"
+            }],
+        "replacement":[{
+            "index":2,
+            "value":"Replaced1"
+        },
+        {
+            "index":3,
+            "value":"Replaced2"
+        }]
+    }
+]
