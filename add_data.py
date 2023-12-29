@@ -2,16 +2,11 @@ import csv
 import sqlite3
 import json
 import operator
+import logging
 
 from datetime import datetime,date
 from functools import reduce
-
-
-#Read data from csv file downloaded from Avanza
-avanza_data_file = open("./data/newdata.csv","r")
-avanza_data = csv.reader(avanza_data_file, delimiter=';')
-avanza_header_row = next(avanza_data)
-avanza_data = list(avanza_data)
+from database_handler import DatabaseHandler
 
 #Sometimes Avanza changes the name of an asset, but the ISIN stays the same.
 #This class handles these and other special cases
@@ -75,54 +70,81 @@ class SpecialCases:
                 #They are stored in the second element of the special_cases list
                 row = self.special_cases[i][1](row)
         return row
-   
-if __name__ == "__main__":
-    #Connect to asset_data.db sqllite3 database
-    con = sqlite3.connect("data/asset_data.db", detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES)
-    cur = con.cursor()
-
-    #Set up special cases
-    special_cases = SpecialCases("./data/special_cases.json")
-
-    #Create table for storing transactions if it does not exist
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS transactions(
-            date DATE NOT NULL, 
-            account TEXT NOT NULL,
-            transaction_type TEXT NOT NULL,
-            asset_name TEXT NOT NULL,
-            amount REAL NOT NULL,
-            price REAL NOT NULL,
-            total REAL NOT NULL,
-            courtage REAL NOT NULL,
-            currency TEXT NOT NULL,
-            isin TEXT NOT NULL,
-            processed INT DEFAULT 0
-            )""")
-
-    #Find overlapping transactions to avoid adding douplicates
-    max_date = max([datetime.strptime(row[0],"%Y-%m-%d") for row in avanza_data]).date()
-    min_date = min([datetime.strptime(row[0],"%Y-%m-%d") for row in avanza_data]).date()
-    existing_rows = cur.execute("SELECT date, account, transaction_type, asset_name, amount, price FROM transactions WHERE date >= ? and date <= ?",(min_date,max_date)).fetchall()
+    
+class DataAdder:
+    def __init__(self,database, special_cases = None):
+        self.database = database
+        self.special_cases = special_cases
 
     #Convert numeric data stored as text in the .csv file to float
     #Numbers in csv file use comma as decimal separator, convert to dot. '-' is used for zero values
-    def convert_number(number_string):
+    def convert_number(self,number_string):
         return 0 if number_string == "-" else float(number_string.replace(",","."))
+    
+    #Read data from csv file downloaded from Avanza and add it to the database
+    #Returns number of rows added to the database
+    def add_data(self,file_path):
+        # file_path = ./data/newdata.csv
+        avanza_data_file = open(file_path,"r")
+        avanza_data = csv.reader(avanza_data_file, delimiter=';')
+        # Currently unused, but could be used to check that the file is in the correct format
+        # next() used to skip header row
+        avanza_header_row = next(avanza_data)
+        avanza_data = list(avanza_data)
 
-    #Add transactions to database
-    for transaction in avanza_data:
-        row = (\
-            datetime.strptime(transaction[0], "%Y-%m-%d").date(),\
-            transaction[1],transaction[2],transaction[3],\
-            convert_number(transaction[4]),convert_number(transaction[5]),\
-            convert_number(transaction[6]),convert_number(transaction[7]),\
-            transaction[8],transaction[9]
-            )
-        if special_cases != None:
-            row = special_cases.handle_special_cases(row)
-        if row[0:6] not in existing_rows:
-            cur.execute('INSERT INTO transactions(date, account, transaction_type,asset_name,amount,price,total,courtage,currency,isin) VALUES(?,?,?,?,?,?,?,?,?,?);',row)
+        # Find overlapping transactions to avoid adding douplicates
+        max_date = max([datetime.strptime(row[0],"%Y-%m-%d") for row in avanza_data]).date()
+        min_date = min([datetime.strptime(row[0],"%Y-%m-%d") for row in avanza_data]).date()
+        logging.debug("Date range of transactions to be added: {} - {}".format(min_date,max_date))
 
-    #Commit changes to database
-    con.commit()
+        # Variable to keep track of number of rows added to the database
+        rows_added = 0
+
+        # Connect to database
+        self.database.connect()
+        cur = self.database.conn.cursor()
+        existing_rows = cur.execute("SELECT date, account, transaction_type, asset_name, amount, price FROM transactions WHERE date >= ? and date <= ?",(min_date,max_date)).fetchall()
+
+        #Add transactions to database
+        for transaction in avanza_data:
+            row = (\
+                datetime.strptime(transaction[0], "%Y-%m-%d").date(),\
+                transaction[1],transaction[2],transaction[3],\
+                self.convert_number(transaction[4]),self.convert_number(transaction[5]),\
+                self.convert_number(transaction[6]),self.convert_number(transaction[7]),\
+                transaction[8],transaction[9]
+                )
+            # If special_cases is not None, handle special cases
+            if self.special_cases != None:
+                row = self.special_cases.handle_special_cases(row)
+            # If row is not in existing_rows, add it to the database
+            if row[0:6] not in existing_rows:
+                logging.debug("Adding row to database: {}".format(row))
+                cur.execute('INSERT INTO transactions(date, account, transaction_type,asset_name,amount,price,total,courtage,currency,isin) VALUES(?,?,?,?,?,?,?,?,?,?);',row)
+                rows_added += 1
+            else:
+                logging.debug("Row already in database: {}".format(row))
+
+        # Commit changes to database and disconnect
+        self.database.conn.commit()
+        self.database.disconnect()
+
+        # Return number of rows added to the database
+        logging.info("Added {} rows to the database".format(rows_added))
+        return rows_added
+    
+if __name__ == "__main__":
+    # Connect to asset_data.db sqllite3 database
+    con = sqlite3.connect("data/asset_data.db")
+    cur = con.cursor()
+    # Create DatabaseHandler object
+    db = DatabaseHandler("data/asset_data.db")
+    # Create SpecialCases object
+    special_cases = SpecialCases("data/special_cases.json")
+    # Create DataAdder object
+    data_adder = DataAdder(db,special_cases)
+    # Add data from newdata.csv to the database
+    rows_added = data_adder.add_data("data/newdata.csv")
+
+    # Print number of rows added to the database
+    print("Added {} rows to the database".format(rows_added))
