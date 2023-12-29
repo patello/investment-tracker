@@ -1,7 +1,7 @@
 import pytest
 
 from datetime import datetime
-from data.adddata import parse_special_cases, SpecialCases
+from add_data import parse_special_cases, SpecialCases
 
 
 # Test that error is raised when the special cases file is missing
