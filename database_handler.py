@@ -10,7 +10,12 @@ class DatabaseHandler:
         self.disconnect()
 
     def connect(self):
-        self.conn = sqlite3.connect(self.db_file)
+        # Connect to database
+        # PARSE_DECLTYPES is used to convert sqlite3 date objects to python datetime objects
+        # https://docs.python.org/3/library/sqlite3.html#sqlite3.PARSE_DECLTYPES
+        # PARSE_COLNAMES is used to access columns by name
+        # https://docs.python.org/3/library/sqlite3.html#sqlite3.PARSE_COLNAMES
+        self.conn = sqlite3.connect(self.db_file, detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES)
 
     def disconnect(self):
         if self.conn:
