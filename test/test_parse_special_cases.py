@@ -1,17 +1,17 @@
 import pytest
 
 from datetime import datetime
-from add_data import parse_special_cases, SpecialCases
+from add_data import SpecialCases
 
 
 # Test that error is raised when the special cases file is missing
 def test_parse_special_cases__file_not_found():
     with pytest.raises(FileNotFoundError):
-        parse_special_cases("non_existing_file.json")
+        SpecialCases("non_existing_file.json")
 
-@pytest.fixture
+@pytest.fixture(scope='module')
 def special_cases():
-    return parse_special_cases("./test/special_cases_test.json")
+    return SpecialCases("./test/special_cases_test.json")
 
 # Test different conditions for handle_special_cases
 def test_handle_special_cases__conditions(special_cases):
@@ -23,7 +23,7 @@ def test_handle_special_cases__conditions(special_cases):
     matching_first_cond = (datetime(2019, 1, 1), 'A', 'B', 'C', 'D')
     assert special_cases.handle_special_cases(matching_first_cond) == matching_first_cond
 
-     # Test that the function returns the same values when the input only matches the second condition
+    # Test that the function returns the same values when the input only matches the second condition
     matching_second_cond = (datetime(2023, 1, 1), 'A', 'B', 'DNB SMB', 'D')
     assert special_cases.handle_special_cases(matching_second_cond) == matching_second_cond 
 
