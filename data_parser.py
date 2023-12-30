@@ -5,19 +5,32 @@ import logging
 from datetime import date
 from database_handler import DatabaseHandler
 from add_data import SpecialCases, DataAdder
+import sqlite3
+import calendar
+import logging
+from datetime import date
+from database_handler import DatabaseHandler
+from add_data import SpecialCases, DataAdder
 
 logging.basicConfig(level=logging.DEBUG)
 
-# Execption that is rased when there is a missmatch between the amount of assets in the database and the amount of assets in the transactions
+# Exception that is raised when there is a mismatch between the amount of assets in the database and the amount of assets in the transactions
 class AssetDeficit(Exception):
-    pass
+    def __init__(self, message, data_parser):
+        super().__init__(message)
+        self.data_parser = data_parser
+        logging.error(message)
+        data_parser.transaction_cur.execute("SELECT *,rowid FROM transactions WHERE processed == 0 ORDER BY date ASC")
+        logging.error("Unprocessed transactions:")
+        for row in data_parser.transaction_cur.fetchall():
+            logging.error(row)
 
 class DataParser:
     def __init__(self, db):
         self.listing_change = {"to_asset":None,"to_asset_amount":None,"to_rowid":None}
         self.db = db
         self.conn = None
-        #Two cursors are used, one for handling writing processed lines and one responsible for keeping track of unprocessed lines
+        # Two cursors are used, one for handling writing processed lines and one responsible for keeping track of unprocessed lines
         self._data_cur = None
         self._transaction_cur = None
 
@@ -216,9 +229,9 @@ class DataParser:
                 raise(ValueError)
             row = unprocessed_lines.fetchone()
 
-        unprocessed_lines = self.transaction_cur.execute("SELECT *,rowid FROM transactions WHERE processed == 0 ORDER BY date ASC")
-        if unprocessed_lines.fetchone() is not None:
-            raise AssetDeficit
+        unprocessed_count = self.transaction_cur.execute("SELECT COUNT(*) FROM transactions WHERE processed == 0").fetchone()[0]
+        if unprocessed_count > 0:
+            raise AssetDeficit("There are {} transaction(s) that could not be processed due to a missmatch of assets in the database".format(unprocessed_count),self)
         else:
             #Calculate summary data and put it in asset table
             asset_ids = self.data_cur.execute("SELECT asset_id FROM assets").fetchall()
