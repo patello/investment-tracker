@@ -32,3 +32,18 @@ def test_data_adder_add_data(db,special_cases):
     db.connect()
     assert db.get_db_stats(["Transactions"])["Transactions"] == rows_added
     db.disconnect()
+
+    # Add the same data again
+    new_rows_added = data_adder.add_data("./test/small_data.csv")
+    # Check that no rows were added
+    assert new_rows_added == 0
+
+    # Add some overlapping data
+    new_rows_added = data_adder.add_data("./test/small_data_plus.csv")
+    # Check that the correct number of rows were added
+    assert new_rows_added == 6
+
+    # Check that the correct number of rows are in the database
+    db.connect()
+    assert db.get_db_stats(["Transactions"])["Transactions"] == rows_added+new_rows_added
+    db.disconnect()

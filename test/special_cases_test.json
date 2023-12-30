@@ -37,5 +37,15 @@
             "index":3,
             "value":"Replaced2"
         }]
+    },
+    {
+        "condition": [{
+            "index":3,
+            "value":"COMPUTER INN"
+            }],
+        "replacement":[{
+            "index":3,
+            "value":"COMPUTER INNOVATION"
+        }]
     }
 ]
