@@ -22,6 +22,11 @@ class DatabaseHandler:
             self.conn.close()
             self.conn = None
 
+    def get_cursor(self):
+        if self.conn == None:
+            self.connect()
+        return self.conn.cursor()
+
     # Create tables if they do not exist
     def create_tables(self):
         if not self.conn:

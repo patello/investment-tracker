@@ -17,6 +17,15 @@ def test_database_handler__connect(db_handler):
     db_handler.disconnect()
     assert db_handler.conn is None
 
+def test_database_hanler__get_cursor(db_handler):
+    # Test that get_cursor() returns a cursor object even when the database is not connected
+    cursor1 = db_handler.get_cursor()
+    assert cursor1 is not None
+
+    # Test that get_cursor() returns a cursor object when the database is already connected
+    cursor2 = db_handler.get_cursor()
+    assert cursor2 is not None
+
 def test_database_handler__get_db_stats(db_handler):
     db_handler.connect()
     stats = db_handler.get_db_stats(["Transactions", "Unprocessed", "Assets", "Capital", "Tables"])
