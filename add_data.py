@@ -134,9 +134,6 @@ class DataAdder:
         return rows_added
     
 if __name__ == "__main__":
-    # Connect to asset_data.db sqllite3 database
-    con = sqlite3.connect("data/asset_data.db")
-    cur = con.cursor()
     # Create DatabaseHandler object
     db = DatabaseHandler("data/asset_data.db")
     # Create SpecialCases object
