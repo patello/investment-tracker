@@ -118,6 +118,11 @@ class DatabaseHandler:
             cursor.execute("SELECT COUNT(*) FROM transactions")
             stat_value["Transactions"] = cursor.fetchone()[0]
 
+        # Get number of processed transactions
+        if "Processed" in stats:
+            cursor.execute("SELECT COUNT(*) FROM transactions WHERE processed = 1")
+            stat_value["Processed"] = cursor.fetchone()[0]
+
         # Get number of unprocessed transactions
         if "Unprocessed" in stats:
             cursor.execute("SELECT COUNT(*) FROM transactions WHERE processed = 0")
@@ -151,7 +156,7 @@ if __name__ == "__main__":
     db_handler.create_tables()
 
     # Get stats from database
-    stats = ["Transactions", "Unprocessed", "Assets", "Capital", "Tables"]
+    stats = ["Transactions", "Processed", "Unprocessed", "Assets", "Capital", "Tables"]
     stats = db_handler.get_db_stats(stats)
 
     # Print each stat and its value
