@@ -106,6 +106,7 @@ class DatabaseHandler:
     # and returns a list of the corresponding values
     # "Transactions" - Number of transactions
     # "Unprocessed" - Number of unprocessed transactions
+    # "Processed" - Number of processed transactions
     # "Assets" - Number of unique assets
     # "Capital" - Total capital
     # "Tables" - Number of tables in the database
@@ -150,6 +151,11 @@ class DatabaseHandler:
             stat_value["Tables"] = cursor.fetchone()[0]
 
         return stat_value
+
+    # Function that takes a single string corresponding to a stat in get_db_stats
+    # and returns the corresponding value
+    def get_db_stat(self, stat):
+        return self.get_db_stats([stat])[stat]
 
 # Example Usage
 if __name__ == "__main__":
