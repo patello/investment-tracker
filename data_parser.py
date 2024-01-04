@@ -29,7 +29,6 @@ class DataParser:
     def __init__(self, db):
         self.listing_change = {"to_asset":None,"to_asset_amount":None,"to_rowid":None}
         self.db = db
-        self.conn = None
         # Two cursors are used, one for handling writing processed lines and one responsible for keeping track of unprocessed lines
         self._data_cur = None
         self._transaction_cur = None
@@ -256,7 +255,7 @@ class DataParser:
                         sold_amount += month_sold_amount
                 self.data_cur.execute("UPDATE assets SET amount = ?, average_price = ?, average_purchase_price = ?, average_sale_price = ?, purchased_amount = ?, sold_amount = ? WHERE asset_id = ?",(amount,average_price,average_purchase_price,average_sale_price,purchased_amount,sold_amount,id,))
             #Commit changes
-            self.data_cur.commit()
+            self.db.commit()
 
 if __name__ == "__main__":
     # Create DatabaseHandler object

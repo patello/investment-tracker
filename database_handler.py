@@ -22,6 +22,11 @@ class DatabaseHandler:
             self.conn.close()
             self.conn = None
 
+    def commit(self):
+        if self.conn:
+            self.conn.commit()
+        else:
+            raise Exception("Cannot commit changes, database connection not established.")
     def get_cursor(self):
         if self.conn == None:
             self.connect()
