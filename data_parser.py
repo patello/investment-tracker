@@ -24,6 +24,7 @@ class AssetDeficit(Exception):
         logging.error("Unprocessed transactions:")
         for row in data_parser.transaction_cur.fetchall():
             logging.error(row)
+        data_parser.db.conn.rollback()
 
 class DataParser:
     def __init__(self, db):
