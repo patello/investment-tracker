@@ -11,7 +11,7 @@ def db(tmp_path):
 
 @pytest.fixture(scope='function')
 def special_cases():
-    return SpecialCases("./test/special_cases_test.json")
+    return SpecialCases("./test/data/special_cases_test.json")
 
 def test_data_adder_init(db,special_cases):
     # Create DataAdder object
@@ -25,7 +25,7 @@ def test_data_adder_add_data(db,special_cases):
     # Create DataAdder object
     data_adder = DataAdder(db,special_cases)
     # Add data to database
-    rows_added = data_adder.add_data("./test/small_data.csv")
+    rows_added = data_adder.add_data("./test/data/small_data.csv")
     # Check that the correct number of rows were added
     assert rows_added == 7
     # Check that the correct number of rows are in the database
@@ -34,12 +34,12 @@ def test_data_adder_add_data(db,special_cases):
     db.disconnect()
 
     # Add the same data again
-    new_rows_added = data_adder.add_data("./test/small_data.csv")
+    new_rows_added = data_adder.add_data("./test/data/small_data.csv")
     # Check that no rows were added
     assert new_rows_added == 0
 
     # Add some overlapping data
-    new_rows_added = data_adder.add_data("./test/small_data_plus.csv")
+    new_rows_added = data_adder.add_data("./test/data/small_data_plus.csv")
     # Check that the correct number of rows were added
     assert new_rows_added == 6
 

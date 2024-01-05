@@ -11,7 +11,7 @@ def test_parse_special_cases__file_not_found():
 
 @pytest.fixture(scope='module')
 def special_cases():
-    return SpecialCases("./test/special_cases_test.json")
+    return SpecialCases("./test/data/special_cases_test.json")
 
 # Test different conditions for handle_special_cases
 def test_handle_special_cases__conditions(special_cases):
