@@ -26,6 +26,8 @@ class AssetDeficit(Exception):
             logging.error(row)
         data_parser.db.conn.rollback()
 
+# TODO: The DataParser does not check which account the transaction is made from, consider implementing this
+
 class DataParser:
     def __init__(self, db):
         self.listing_change = {"to_asset":None,"to_asset_amount":None,"to_rowid":None}
