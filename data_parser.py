@@ -206,7 +206,6 @@ class DataParser:
             listing_change = {"to_asset":None,"to_asset_amount":None,"to_rowid":None}
     
     def process_transactions(self):
-        self._transaction_cur = self.data_cur
         unprocessed_lines = self.transaction_cur.execute("SELECT *,rowid FROM transactions WHERE processed == 0 ORDER BY date ASC")
         row = unprocessed_lines.fetchone()
         #Consider upgrading to python3.8 to make this more elegant with := statment
