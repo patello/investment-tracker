@@ -1,5 +1,6 @@
 #Personal data files
 /data/
+/test/private
 
 #Temporary python files
 *.pyc
