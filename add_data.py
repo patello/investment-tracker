@@ -37,7 +37,7 @@ class SpecialCases:
                 value = condition["value"]
                 # If index is 0, then the value is a date encoded as YYYY-MM-DD and needs to be converted to a date object
                 if index == 0:
-                    value = datetime.strptime(value, "%Y-%m-%d")
+                    value = datetime.strptime(value, "%Y-%m-%d").date()
                 op_func = ops.get(condition.get("operator", "=="))  # default to "=="
                 # Create a function that checks if a row matches a condition
                 # Default values are used to avoid late binding
