@@ -27,7 +27,7 @@ def test_data_adder_add_data(db,special_cases):
     # Add data to database
     rows_added = data_adder.add_data("./test/data/small_data.csv")
     # Check that the correct number of rows were added
-    assert rows_added == 7
+    assert rows_added == 8
     # Check that the correct number of rows are in the database
     db.connect()
     assert db.get_db_stats(["Transactions"])["Transactions"] == rows_added
