@@ -189,21 +189,20 @@ class DataParser:
             self.transaction_cur.execute("SELECT *,rowid FROM transactions WHERE processed == 0 ORDER BY date ASC")
 
     def handle_listing_change(self, row):
-        global listing_change
-        if listing_change["to_asset"] is None:
-            listing_change["to_asset"] = row[3]
-            listing_change["to_asset_amount"] = row[4]
-            listing_change["to_rowid"] = row[-1]
+        if self.listing_change["to_asset"] is None:
+            self.listing_change["to_asset"] = row[3]
+            self.listing_change["to_asset_amount"] = row[4]
+            self.listing_change["to_rowid"] = row[-1]
         else:
             asset = row[3]
             amount = -row[4]
             (asset_id,) = self.data_cur.execute("SELECT asset_id FROM assets WHERE asset = ?",(asset,)).fetchone()
-            self.data_cur.execute("UPDATE assets SET asset = ?, amount = ? WHERE asset_id = ?",(listing_change["to_asset"],listing_change["to_asset_amount"],asset_id))
-            change_factor = listing_change["to_asset_amount"]/amount
+            self.data_cur.execute("UPDATE assets SET asset = ?, amount = ? WHERE asset_id = ?",(self.listing_change["to_asset"],self.listing_change["to_asset_amount"],asset_id))
+            change_factor = self.listing_change["to_asset_amount"]/amount
             self.data_cur.execute("UPDATE month_assets SET amount = amount * ? WHERE asset_id = ?",(change_factor,asset_id))
-            self.transaction_cur.execute("UPDATE transactions SET processed = 1 WHERE rowid = ? OR rowid = ?",(row[-1],listing_change["to_rowid"],))
+            self.transaction_cur.execute("UPDATE transactions SET processed = 1 WHERE rowid = ? OR rowid = ?",(row[-1],self.listing_change["to_rowid"],))
             self.transaction_cur.execute("SELECT *,rowid FROM transactions WHERE processed == 0 ORDER BY date ASC")
-            listing_change = {"to_asset":None,"to_asset_amount":None,"to_rowid":None}
+            self.listing_change = {"to_asset":None,"to_asset_amount":None,"to_rowid":None}
     
     def process_transactions(self):
         unprocessed_lines = self.transaction_cur.execute("SELECT *,rowid FROM transactions WHERE processed == 0 ORDER BY date ASC")
