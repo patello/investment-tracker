@@ -88,6 +88,7 @@ class DataParser:
         month = self.allocate_to_month(row[0])
         amount = row[6]
         self.data_cur.execute("UPDATE month_data SET capital = capital + ?, deposit = deposit + ? WHERE month = ?",(amount,amount,month))
+        # Reset transaction_cur since new funds are available
         self.transaction_cur.execute("UPDATE transactions SET processed = 1 WHERE rowid = ?",(row[-1],))
         self.transaction_cur.execute("SELECT *,rowid FROM transactions WHERE processed == 0 ORDER BY date ASC")
 
@@ -130,6 +131,7 @@ class DataParser:
                 self.data_cur.execute("UPDATE month_assets SET amount = amount + ?, purchased_amount = purchased_amount + ? WHERE month = ? AND asset_id = ?",(month_asset_amount, month_asset_amount, oldest_available,asset_id))
                 remaining_amount -= month_amount
                 i += 1
+            # Reset transaction_cur since new assets are available
             self.transaction_cur.execute("UPDATE transactions SET processed = 1 WHERE rowid = ?",(row[-1],))
             self.transaction_cur.execute("SELECT *,rowid FROM transactions WHERE processed == 0 ORDER BY date ASC")
  
@@ -154,6 +156,7 @@ class DataParser:
                 self.data_cur.execute("UPDATE month_data SET capital = capital + ? WHERE month = ?",(month_capital_amount,oldest_available))
                 remaining_amount -= month_amount
                 i += 1
+            # Reset transaction_cur since new funds are available
             self.transaction_cur.execute("UPDATE transactions SET processed = 1 WHERE rowid = ?",(row[-1],))
             self.transaction_cur.execute("SELECT *,rowid FROM transactions WHERE processed == 0 ORDER BY date ASC")
 
@@ -169,6 +172,7 @@ class DataParser:
                 remaining_amount -= asset_amount
         if remaining_amount > 0:
             self.data_cur.execute("UPDATE month_data SET capital = capital + ? WHERE month = ?",(remaining_amount*dividend_per_asset,dividend_month))
+        # Reset transaction_cur since new funds are available
         self.transaction_cur.execute("UPDATE transactions SET processed = 1 WHERE rowid = ?",(row[-1],))
         self.transaction_cur.execute("SELECT *,rowid FROM transactions WHERE processed == 0 ORDER BY date ASC")
 
