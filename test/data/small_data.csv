@@ -1,3 +1,4 @@
+Datum;Konto;Typ av transaktion;Värdepapper/beskrivning;Antal;Kurs;Belopp;Courtage;Valuta;ISIN;Resultat
 2017-11-02;1111111;Köp;AstraZeneca;2;471,9;-946;2;SEK;GB0009895292;-
 2017-11-02;1111111;Köp;Snap A;10;13,17;-1131;65;SEK;US83304A1060;-
 2017-10-30;1111111;Insättning;Direktinsättning från Danske Bank;-;-;15000;0;SEK;;-
