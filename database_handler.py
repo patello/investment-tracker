@@ -1,39 +1,63 @@
 import sqlite3
 
 class DatabaseHandler:
+    """
+    A class that handles connection to a sqllite3 database.
+    """
 
-    def __init__(self, db_file):
+    def __init__(self, db_file: str):
+        """
+        Parameters:
+        db_file (str): Path to the database file.
+        """
         self.db_file = db_file
         self.conn = None
         self.connect()
         self.create_tables()
         self.disconnect()
 
-    def connect(self):
-        # Connect to database
+    def connect(self) -> None:
+        """
+        Connects to the database with PARSE_DECLTYPES and PARSE_COLNAMES enabled.
+        """
         # PARSE_DECLTYPES is used to convert sqlite3 date objects to python datetime objects
         # https://docs.python.org/3/library/sqlite3.html#sqlite3.PARSE_DECLTYPES
         # PARSE_COLNAMES is used to access columns by name
         # https://docs.python.org/3/library/sqlite3.html#sqlite3.PARSE_COLNAMES
         self.conn = sqlite3.connect(self.db_file, detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES)
 
-    def disconnect(self):
+    def disconnect(self) -> None:
+        """
+        Disconnects from the database. Sets self.conn to None.
+        """
         if self.conn:
             self.conn.close()
             self.conn = None
 
-    def commit(self):
+    def commit(self) -> None:
+        """
+        Commits changes to the database. Raises exception if no connection is established.
+        """
         if self.conn:
             self.conn.commit()
         else:
             raise Exception("Cannot commit changes, database connection not established.")
-    def get_cursor(self):
+        
+    def get_cursor(self) -> sqlite3.Cursor:
+        """
+        Returns a cursor to the database.
+
+        Returns:
+        sqlite3.Cursor: Cursor to the database.
+        """
         if self.conn == None:
             self.connect()
         return self.conn.cursor()
 
-    # Create tables if they do not exist
-    def create_tables(self):
+    def create_tables(self) -> None:
+        """
+        Creates transaction tables in the database if they do not exist. Raises exception if no connection is established.
+        """
         if not self.conn:
             raise Exception("Database connection not established.")
 
@@ -102,15 +126,22 @@ class DatabaseHandler:
 
         self.conn.commit()
 
-    # Function that takes a list of different stats that should be retreived from the database
-    # and returns a list of the corresponding values
-    # "Transactions" - Number of transactions
-    # "Unprocessed" - Number of unprocessed transactions
-    # "Processed" - Number of processed transactions
-    # "Assets" - Number of unique assets
-    # "Capital" - Total capital
-    # "Tables" - Number of tables in the database
-    def get_db_stats(self, stats):
+    def get_db_stats(self, stats: list) -> dict:
+        """
+        Returns a dictionary with the requested stats from the database. Available stats are:
+        * "Transactions" - Number of transactions
+        * "Unprocessed" - Number of unprocessed transactions
+        * "Processed" - Number of processed transactions
+        * "Assets" - Number of unique assets
+        * "Capital" - Total capital
+        * "Tables" - Number of tables in the database
+
+        Parameters:
+        stats (list): List of stats to be retreived from the database.
+
+        Returns:
+        dict: Dictionary with the requested stats from the database.
+        """
         if not self.conn:
             raise Exception("Database connection not established.")
 
@@ -152,9 +183,16 @@ class DatabaseHandler:
 
         return stat_value
 
-    # Function that takes a single string corresponding to a stat in get_db_stats
-    # and returns the corresponding value
-    def get_db_stat(self, stat):
+    def get_db_stat(self, stat: str) -> float:
+        """
+        Function that takes a single string corresponding to a stat in get_db_stats
+
+        Parameters:
+        stat (str): String corresponding to a stat in get_db_stats
+
+        Returns:
+        int or float: Value of the requested stat
+        """
         return self.get_db_stats([stat])[stat]
 
 # Example Usage

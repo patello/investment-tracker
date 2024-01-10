@@ -8,10 +8,15 @@ from datetime import datetime,date
 from functools import reduce
 from database_handler import DatabaseHandler
 
-#Sometimes Avanza changes the name of an asset, but the ISIN stays the same.
-#This class handles these and other special cases
 class SpecialCases:
-    def __init__(self, file_path):
+    """
+    SpecialCases class handles special cases when adding data to the database.
+    """
+    def __init__(self, file_path: str):
+        """
+        Parameters:
+        file_path (str): Path to json file containing special cases.
+        """
         # Read special cases from json file
         special_cases_file = open(file_path, "r")
         special_cases = json.load(special_cases_file)
@@ -61,7 +66,16 @@ class SpecialCases:
         self.special_cases = list(zip(special_conditions, special_replacements))
 
     #Check if a row matches a special case
-    def handle_special_cases(self,row):
+    def handle_special_cases(self, row: list):
+        """
+        Takes a row from the csv file as a list and does replacements if the row matches a special case.
+
+        Parameters:
+        row (list): A row from the csv file.
+
+        Returns:
+        list: The same row after replacements have been made.
+        """
         for i in range(len(self.special_cases)):
             #Special conditions are functions that check if a row matches a special case
             #They are stored in the first element of the special_cases list
@@ -72,18 +86,40 @@ class SpecialCases:
         return row
     
 class DataAdder:
-    def __init__(self,database, special_cases = None):
+    """
+    DataAdder class adds data from a csv file to a database.
+    """
+    def __init__(self, database: DatabaseHandler, special_cases: SpecialCases = None):
+        """
+        Parameters:
+        database (DatabaseHandler): The database to add data to.
+        special_cases (SpecialCases): SpecialCases object that handles special rules when adding data to the database.
+        """
         self.database = database
         self.special_cases = special_cases
 
-    #Convert numeric data stored as text in the .csv file to float
-    #Numbers in csv file use comma as decimal separator, convert to dot. '-' is used for zero values
-    def convert_number(self,number_string):
-        return 0 if number_string == "-" else float(number_string.replace(",","."))
+    def convert_number(self,number_string : str) -> float:
+        """
+        Takes a number as a string and converts it to a float, also converts comma to dot as decimal separator and '-' to 0.
+        
+        Parameters:
+        number_string (str): A number as a string.
+
+        Returns:
+        float: The number as a float.
+        """
+        return 0.0 if number_string == "-" else float(number_string.replace(",","."))
     
-    #Read data from csv file downloaded from Avanza and add it to the database
-    #Returns number of rows added to the database
-    def add_data(self,file_path):
+    def add_data(self, file_path: str) -> int:
+        """
+        Takes a path to a csv file downloaded from Avanza and adds the data to the database.
+
+        Parameters:
+        file_path (str): Path to csv file downloaded from Avanza.
+
+        Returns:
+        int: Number of rows added to the database.
+        """
         # file_path = ./data/newdata.csv
         avanza_data_file = open(file_path,"r")
         avanza_data = csv.reader(avanza_data_file, delimiter=';')
