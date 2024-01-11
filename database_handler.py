@@ -126,6 +126,25 @@ class DatabaseHandler:
 
         self.conn.commit()
 
+    def reset_table(self, table: str) -> int:
+        """
+        Deletes all rows from the specified table. Raises exception if no connection is established.
+
+        Parameters:
+        table (str): Name of the table to be reset.
+
+        Returns:
+        int: Number of rows deleted from the table.
+        """
+        if not self.conn:
+            raise Exception("Database connection not established.")
+
+        cursor = self.conn.cursor()
+
+        cursor.execute("DELETE FROM {}".format(table))
+
+        return cursor.rowcount
+
     def get_db_stats(self, stats: list) -> dict:
         """
         Returns a dictionary with the requested stats from the database. Available stats are:
