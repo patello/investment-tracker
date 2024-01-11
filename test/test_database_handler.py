@@ -3,7 +3,7 @@ import pytest
 from database_handler import DatabaseHandler
 
 @pytest.fixture(scope='function')
-def db_handler(tmp_path):
+def db_handler(tmp_path) -> DatabaseHandler:
     # Create a temporary SQLite database in the tmp_path directory
     db_file = tmp_path / "test_asset_data.db"
     return DatabaseHandler(str(db_file))
@@ -47,4 +47,25 @@ def test_database_handler__get_db_stat(db_handler):
     assert db_handler.get_db_stat("Assets") == 0
     assert db_handler.get_db_stat("Capital") == 0
     assert db_handler.get_db_stat("Tables") == 4
+    db_handler.disconnect()
+
+# Test that the database handler can reset the tables correctly
+def test_database_handler__reset_table(db_handler):
+    db_handler.connect()
+    # Add a row to the transactions table
+    cursor = db_handler.get_cursor()
+    cursor.execute("INSERT INTO transactions(date, account, transaction_type,asset_name,amount,price,total,courtage,currency,isin) VALUES(?,?,?,?,?,?,?,?,?,?);",(1,2,3,4,5,6,7,8,9,10))
+    db_handler.conn.commit()
+    # Get the number of rows in the transactions table
+    original_rows = db_handler.get_db_stat("Transactions")
+    # Reset the tables a different table
+    db_handler.reset_table("assets")
+    # Check that the number of rows is the same
+    assert db_handler.get_db_stat("Transactions") == original_rows
+    # Reset the correct table
+    db_handler.reset_table("transactions")
+    # Check that the new number of rows is less than the original number of rows
+    assert db_handler.get_db_stat("Transactions") < original_rows
+    # Check that the number of rows is 0
+    assert db_handler.get_db_stat("Transactions") == 0
     db_handler.disconnect()
