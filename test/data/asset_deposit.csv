@@ -1,0 +1,3 @@
+Datum;Konto;Typ av transaktion;Värdepapper/beskrivning;Antal;Kurs;Belopp;Courtage;Valuta;ISIN;Resultat
+2017-02-08;7485272;Sälj;Swedbank Robur Sverige A;-118,6099;460,480027;54617,49;0;SEK;SE0000996233;-
+2017-02-06;7485272;Tillgångsinsättning;Swedbank Robur Sverige A;118,6099;460,480027;-;0;-;SE0000996233;-

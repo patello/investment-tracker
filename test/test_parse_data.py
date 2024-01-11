@@ -5,7 +5,11 @@ from add_data import DataAdder, SpecialCases
 from data_parser import DataParser, AssetDeficit
 
 # Define all datasets to be used that should pass
-passing_datasets = ["./test/data/small_data.csv", "./test/data/listing_change.csv", "./test/data/reordered_data.csv"]
+passing_datasets = [
+    "./test/data/small_data.csv", 
+    "./test/data/listing_change.csv", 
+    "./test/data/reordered_data.csv",
+    "./test/data/asset_deposit.csv",]
 
 # Parametrize the fixture
 # Indirect parametrization allows us to use different datasets for the same fixture

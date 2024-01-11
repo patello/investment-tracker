@@ -297,6 +297,27 @@ class DataParser:
             self.transaction_cur.execute("SELECT *,rowid FROM transactions WHERE processed == 0 ORDER BY date ASC")
             self.listing_change = {"to_asset":None,"to_asset_amount":None,"to_rowid":None}
     
+    def handle_asset_deposit(self, row: tuple) -> None:
+        """
+        Takes a transaction row and adds the amount to the assets of the month the transaction is allocated to.
+        Counts as a deposit for the month the transaction is allocated to so the price is also added to the deposit of that month.
+
+        Parameters:
+        row (tuple): A row from the transactions table in the database.
+        """
+        month = self.allocate_to_month(row[0])
+        asset = row[3]
+        amount = row[4]
+        price = row[5]
+        self.data_cur.execute("INSERT OR IGNORE INTO assets (asset) VALUES (?) ",(asset,))
+        asset_id = self.data_cur.execute("SELECT asset_id FROM assets WHERE asset = ?",(asset,)).fetchone()[0]
+        self.data_cur.execute("INSERT OR IGNORE INTO month_assets(month,asset_id) VALUES (?,?)",(month,asset_id))
+        self.data_cur.execute("UPDATE month_assets SET amount = amount + ? WHERE month = ? AND asset_id = ?",(amount,month,asset_id))
+        self.data_cur.execute("UPDATE month_data SET deposit = deposit + ? WHERE month = ?",(amount*price,month))
+        # Reset transaction_cur since new assets are available
+        self.transaction_cur.execute("UPDATE transactions SET processed = 1 WHERE rowid = ?",(row[-1],))
+        self.transaction_cur.execute("SELECT *,rowid FROM transactions WHERE processed == 0 ORDER BY date ASC")
+
     def process_transactions(self) -> None:
         """
         Process transactions all transactions in the database that have not been processed yet.
@@ -323,6 +344,8 @@ class DataParser:
                 self.handle_fees(row)
             elif "Byte" in row[2] or row[2] == "Övrigt":
                 self.handle_listing_change(row)
+            elif row[2] == "Tillgångsinsättning":
+                self.handle_asset_deposit(row)
             else:
                 raise(ValueError)
             row = unprocessed_lines.fetchone()
