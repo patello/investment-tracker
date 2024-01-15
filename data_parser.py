@@ -312,6 +312,10 @@ class DataParser:
         self.data_cur.execute("INSERT OR IGNORE INTO assets (asset) VALUES (?) ",(asset,))
         asset_id = self.data_cur.execute("SELECT asset_id FROM assets WHERE asset = ?",(asset,)).fetchone()[0]
         self.data_cur.execute("INSERT OR IGNORE INTO month_assets(month,asset_id) VALUES (?,?)",(month,asset_id))
+        # Update average price and average purchase price
+        self.data_cur.execute("UPDATE month_assets SET average_price = (? * ? + amount * average_price) / (amount + ?) WHERE month = ? AND asset_id = ?", (amount, price, amount, month, asset_id))
+        self.data_cur.execute("UPDATE month_assets SET average_purchase_price = (? * ? + purchased_amount * average_purchase_price) / (purchased_amount + ?) WHERE month = ? AND asset_id = ?", (amount, price, amount, month, asset_id))# Update amount and purchased amount
+        # Update amount and purchased amount
         self.data_cur.execute("UPDATE month_assets SET amount = amount + ? WHERE month = ? AND asset_id = ?",(amount,month,asset_id))
         self.data_cur.execute("UPDATE month_data SET deposit = deposit + ? WHERE month = ?",(amount*price,month))
         # Reset transaction_cur since new assets are available
