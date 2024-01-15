@@ -123,6 +123,56 @@ class DatabaseHandler:
                 FOREIGN KEY (asset_id) REFERENCES assets (asset_id)
                 PRIMARY KEY(month, asset_id)
                 );""")
+        
+        # month_stats contains statistics about capital transfers and gain/loss for each month
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS month_stats(
+                month DATE NOT NULL,
+                deposit REAL DEFAULT 0,
+                withdrawal REAL DEFAULT 0,
+                capital REAL DEFAULT 0,
+                value REAL DEFAULT 0,
+                total_gainloss REAL DEFAULT 0,
+                realized_gainloss REAL DEFAULT 0,
+                unrealized_gainloss REAL DEFAULT 0,
+                total_gainloss_per REAL DEFAULT 0,
+                realized_gainloss_per REAL DEFAULT 0,
+                unrealized_gainloss_per REAL DEFAULT 0,
+                annual_per_yield REAL DEFAULT NULL,
+                acc_deposit REAL DEFAULT 0,
+                acc_value REAL DEFAULT 0,
+                acc_withdrawal REAL DEFAULT 0,
+                acc_net_deposit REAL DEFAULT 0,
+                acc_total_gainloss REAL DEFAULT 0,
+                acc_realized_gainloss REAL DEFAULT 0,
+                acc_unrealized_gainloss REAL DEFAULT 0,
+                PRIMARY KEY(month)
+                );""")
+        
+        # year_stats contains statistics about capital transfers and gain/loss for each year
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS year_stats(
+                year DATE NOT NULL,
+                deposit REAL DEFAULT 0,
+                withdrawal REAL DEFAULT 0,
+                capital REAL DEFAULT 0,
+                value REAL DEFAULT 0,
+                total_gainloss REAL DEFAULT 0,
+                realized_gainloss REAL DEFAULT 0,
+                unrealized_gainloss REAL DEFAULT 0,
+                total_gainloss_per REAL DEFAULT 0,
+                realized_gainloss_per REAL DEFAULT 0,
+                unrealized_gainloss_per REAL DEFAULT 0,
+                annual_per_yield REAL DEFAULT NULL,
+                acc_deposit REAL DEFAULT 0,
+                acc_value REAL DEFAULT 0,
+                acc_withdrawal REAL DEFAULT 0,
+                acc_net_deposit REAL DEFAULT 0,
+                acc_total_gainloss REAL DEFAULT 0,
+                acc_realized_gainloss REAL DEFAULT 0,
+                acc_unrealized_gainloss REAL DEFAULT 0,
+                PRIMARY KEY(year)
+                );""")
 
         self.conn.commit()
 
