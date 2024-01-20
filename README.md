@@ -37,7 +37,7 @@ This project is a work in progress and will be updated as I go along.
 ## Usage
 
 1. Add data in the `data` folder.
-    - You might need to create a "special_cases.json" file in order to match and replace certain values in the data. This file specification is currently undocumented, sorry about that.
+    - You might need to create a "special_cases.json" file in order to match and replace certain values in the data. See file specification in the documentation for the SpecialCases class.
     - You will probably need to update the process_transactions function in the DataParser class to match your data.
 2. Run the script "data_parser.py" with `python data_parser.py`.
 3. Run the script calculate_statistics.py with `python calculate_statistics.py`.

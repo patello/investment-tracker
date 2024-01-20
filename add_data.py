@@ -10,7 +10,24 @@ from database_handler import DatabaseHandler
 
 class SpecialCases:
     """
-    SpecialCases class handles special cases when adding data to the database.
+    SpecialCases class handles special cases when adding data to the database. 
+    The special cases are defined in a json file as a list of cases with the following structure:
+    [{
+        "condition": [
+            { 
+                "index": int, // Integer value of the column
+                "value": str // String that the value of the column should be compared to
+                ("operator": str) // If index represents a date, then operator needs to be provided
+            },
+            // ... more conditions ... ]
+        },
+        "replacement": [
+            {
+                "index": int, // Integer value of the column
+                "value": str // String that the value of the column should be replaced with
+            },
+            // ... more replacements ... ] 
+    } ... more cases ... ]
     """
     def __init__(self, file_path: str):
         """
