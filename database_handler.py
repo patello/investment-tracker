@@ -13,7 +13,7 @@ class DatabaseHandler:
         self.db_file = db_file
         self.conn = None
         self.connect()
-        self.create_tables()
+        self.tables = self.create_tables()
         self.disconnect()
 
     def connect(self) -> None:
@@ -54,9 +54,12 @@ class DatabaseHandler:
             self.connect()
         return self.conn.cursor()
 
-    def create_tables(self) -> None:
+    def create_tables(self) -> list:
         """
         Creates transaction tables in the database if they do not exist. Raises exception if no connection is established.
+
+        Returns:
+        list: List of tables in the database (wether existing or created).
         """
         if not self.conn:
             raise Exception("Database connection not established.")
@@ -175,6 +178,10 @@ class DatabaseHandler:
                 );""")
 
         self.conn.commit()
+
+        # Return a list of tables in the database
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
+        return [table[0] for table in cursor.fetchall()]
 
     def reset_table(self, table: str) -> int:
         """
