@@ -2,6 +2,9 @@ from datetime import datetime, timedelta
 from database_handler import DatabaseHandler
 import requests
 import json
+import logging
+
+logging.basicConfig(level=logging.INFO)
 
 class StatCalculator:
     """
@@ -332,20 +335,41 @@ class StatCalculator:
                     print("APY: {apy:.1f}%".format(apy=annual_per_yield))
                 print("")
 
-    def update_prices(self):
+    def update_prices(self, force: bool = False):
         """
-        Update prices in database. Prices are fetched from external site.
+        Update prices in database. Prices are fetched from external site. 
+        Prices are only updated if they are older than 1 day, unless force is True.
+
+        Parameters:
+        force (bool): If True, update prices even if they are already up to date.
         """
         self.db.connect()
         cur = self.db.get_cursor()
-        assets = cur.execute("SELECT asset,asset_id FROM assets WHERE amount > 0").fetchall()
-        url = "https://www.avanza.se/_cqbe/search/global-search/global-search-template?query={asset}"
 
         today = datetime.today().date()
 
+        if not force:
+            # Check if prices are already up to date
+            (latest_price_date_str,) = cur.execute("SELECT MIN(latest_price_date) FROM assets").fetchone()
+            # Even with detect_types=sqlite3.PARSE_DECLTYPES, the MAX function returns a string instead of a date object
+            # Therefore, we need to convert the string to a date object, if it exists
+            if latest_price_date_str is not None:
+                latest_price_date = datetime.strptime(latest_price_date_str, '%Y-%m-%d').date()
+            else:
+                latest_price_date = None
+            # If latest price_date is today or later, prices are already up to date
+            # If it is None, then no prices have been fetched yet
+            if latest_price_date is not None and latest_price_date >= today - timedelta(days=1):
+                logging.debug("Prices are already up to date. Latest price date: {latest_price_date}".format(latest_price_date=latest_price_date))
+                return
+        
+
+        assets = cur.execute("SELECT asset,asset_id FROM assets WHERE amount > 0").fetchall()
+        url = "https://www.avanza.se/_cqbe/search/global-search/global-search-template?query={asset}"
+
         for (asset,asset_id) in assets:
             url_name = asset
-            #If asset has a slash, everything after the slash should be dropped
+            # If asset has a slash, everything after the slash should be dropped
             if url_name.find("/") > 0:
                 url_name = url_name.split("/",1)[0]
 
