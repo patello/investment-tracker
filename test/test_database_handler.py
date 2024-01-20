@@ -10,6 +10,7 @@ def db_handler(tmp_path) -> DatabaseHandler:
 
 def test_database_handler__init(db_handler):
     assert db_handler is not None
+    assert len(db_handler.tables) > 0
 
 def test_database_handler__connect(db_handler):
     db_handler.connect()
@@ -35,7 +36,7 @@ def test_database_handler__get_db_stats(db_handler):
     assert stats["Processed"] == 0
     assert stats["Assets"] == 0
     assert stats["Capital"] == 0
-    assert stats["Tables"] == 6
+    assert stats["Tables"] == len(db_handler.tables)
     db_handler.disconnect()
 
 # Test that the database handler can return stats correctly
@@ -46,7 +47,7 @@ def test_database_handler__get_db_stat(db_handler):
     assert db_handler.get_db_stat("Processed") == 0
     assert db_handler.get_db_stat("Assets") == 0
     assert db_handler.get_db_stat("Capital") == 0
-    assert db_handler.get_db_stat("Tables") == 6
+    assert db_handler.get_db_stat("Tables") == len(db_handler.tables)
     db_handler.disconnect()
 
 # Test that the database handler can reset the tables correctly
