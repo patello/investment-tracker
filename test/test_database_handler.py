@@ -35,7 +35,7 @@ def test_database_handler__get_db_stats(db_handler):
     assert stats["Processed"] == 0
     assert stats["Assets"] == 0
     assert stats["Capital"] == 0
-    assert stats["Tables"] == 4
+    assert stats["Tables"] == 6
     db_handler.disconnect()
 
 # Test that the database handler can return stats correctly
@@ -46,7 +46,7 @@ def test_database_handler__get_db_stat(db_handler):
     assert db_handler.get_db_stat("Processed") == 0
     assert db_handler.get_db_stat("Assets") == 0
     assert db_handler.get_db_stat("Capital") == 0
-    assert db_handler.get_db_stat("Tables") == 4
+    assert db_handler.get_db_stat("Tables") == 6
     db_handler.disconnect()
 
 # Test that the database handler can reset the tables correctly
