@@ -169,7 +169,7 @@ class StatCalculator:
     def get_stats(self, period: str = "month", deposits: str = "current") -> list:
         """
         Get stats such as capital transfers and gain/loss for either months or years.
-        "deposits" determine if only months/years with deposits are returned or all months/years.
+        "deposits" determine if only months/years with non-withdrawn capital are returned or all months/years.
         Stats are returned as a list in the following order:
         month, deposit, withdrawal, value, total_gainloss, realized_gainloss, unrealized_gainloss,
         total_gainloss_per, realized_gainloss_per, unrealized_gainloss_per, annual_per_yield
@@ -210,7 +210,7 @@ class StatCalculator:
     def get_accumulated(self, period: str = "month", deposits: str = "current") -> list:
         """
         Get accumulated stats such as capital transfers and gain/loss for either months or years.
-        "deposits" determine if only months/years with deposits are returned or all months/years.
+        "deposits" determine if only months/years with non-withdrawn capital are returned or all months/years.
         Accumulated stats are returned as a list in the following order:
         month, acc_net_deposit, acc_value, acc_unrealized_gainloss
         
@@ -388,4 +388,9 @@ if __name__ == "__main__":
     stat_calculator = StatCalculator(db)
     stat_calculator.update_prices()
     stat_calculator.calculate_stats()
+    print("Month stats:")
+    stat_calculator.print_stats(period="month",deposits="current")
+    stat_calculator.print_accumulated(period="month",deposits="current")
+    print("Year stats:")
     stat_calculator.print_stats(period="year",deposits="current")
+    stat_calculator.print_accumulated(period="year",deposits="current")
