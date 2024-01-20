@@ -185,7 +185,7 @@ class DatabaseHandler:
 
     def reset_table(self, table: str) -> int:
         """
-        Deletes all rows from the specified table. Raises exception if no connection is established.
+        Deletes all rows from the specified table. Raises exception if the table does not exist.
 
         Parameters:
         table (str): Name of the table to be reset.
@@ -193,12 +193,32 @@ class DatabaseHandler:
         Returns:
         int: Number of rows deleted from the table.
         """
-        if not self.conn:
-            raise Exception("Database connection not established.")
-
-        cursor = self.conn.cursor()
+        if not table in self.tables:
+            raise Exception("Table {} does not exist.".format(table))
+        
+        cursor = self.get_cursor()
 
         cursor.execute("DELETE FROM {}".format(table))
+
+        self.commit()
+
+        return cursor.rowcount
+    
+    def reset_tables(self) -> int:
+        """
+        Deletes all rows from all tables.
+
+        Returns:
+        int: Number of rows deleted from all tables.
+        """
+
+        cursor = self.get_cursor()
+
+        # Delete all rows from all tables
+        for table in self.tables:
+            cursor.execute("DELETE FROM {}".format(table))
+
+        self.commit()
 
         return cursor.rowcount
 

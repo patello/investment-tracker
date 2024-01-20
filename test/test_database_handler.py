@@ -64,9 +64,39 @@ def test_database_handler__reset_table(db_handler):
     # Check that the number of rows is the same
     assert db_handler.get_db_stat("Transactions") == original_rows
     # Reset the correct table
-    db_handler.reset_table("transactions")
+    rowcount = db_handler.reset_table("transactions")
     # Check that the new number of rows is less than the original number of rows
     assert db_handler.get_db_stat("Transactions") < original_rows
+    # Check that the number of reset rows is the same as the original number of rows
+    assert rowcount == original_rows
+    # Check that the number of rows is 0
+    assert db_handler.get_db_stat("Transactions") == 0
+    db_handler.disconnect()
+
+# Test that the database handler returns an error when trying to reset a table that does not exist
+def test_database_handler__reset_table_nonexistant(db_handler):
+    db_handler.connect()
+    # Add a row to the transactions table
+    cursor = db_handler.get_cursor()
+    cursor.execute("INSERT INTO transactions(date, account, transaction_type,asset_name,amount,price,total,courtage,currency,isin) VALUES(?,?,?,?,?,?,?,?,?,?);",(1,2,3,4,5,6,7,8,9,10))
+    db_handler.conn.commit()
+    # Reset the tables a table that does not exist
+    with pytest.raises(Exception):
+        db_handler.reset_table("nonexistant_table")
+    # Check that the number of rows is the same
+    assert db_handler.get_db_stat("Transactions") == 1
+
+# Test that the database handler can reset all tables correctly
+def test_database_handler__reset_all_tables(db_handler):
+    db_handler.connect()
+    # Add a row to the transactions table
+    cursor = db_handler.get_cursor()
+    cursor.execute("INSERT INTO transactions(date, account, transaction_type,asset_name,amount,price,total,courtage,currency,isin) VALUES(?,?,?,?,?,?,?,?,?,?);",(1,2,3,4,5,6,7,8,9,10))
+    db_handler.conn.commit()
+    # Get the number of rows in the transactions table
+    db_handler.get_db_stat("Transactions")
+    # Reset the tables
+    db_handler.reset_tables()
     # Check that the number of rows is 0
     assert db_handler.get_db_stat("Transactions") == 0
     db_handler.disconnect()
