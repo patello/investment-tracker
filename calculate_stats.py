@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta
 from database_handler import DatabaseHandler
-import sqlite3
+import requests
+import json
 
 class StatCalculator:
     """
@@ -331,8 +332,36 @@ class StatCalculator:
                     print("APY: {apy:.1f}%".format(apy=annual_per_yield))
                 print("")
 
+    def update_prices(self):
+        """
+        Update prices in database. Prices are fetched from external site.
+        """
+        self.db.connect()
+        cur = self.db.get_cursor()
+        assets = cur.execute("SELECT asset,asset_id FROM assets WHERE amount > 0").fetchall()
+        url = "https://www.avanza.se/_cqbe/search/global-search/global-search-template?query={asset}"
+
+        today = datetime.today().date()
+
+        for (asset,asset_id) in assets:
+            url_name = asset
+            #If asset has a slash, everything after the slash should be dropped
+            if url_name.find("/") > 0:
+                url_name = url_name.split("/",1)[0]
+
+            r = requests.get(url.format(asset=url_name))
+
+            if r.status_code == 200:
+                resp = json.loads(r.content)
+                price = float(resp["resultGroups"][0]["hits"][0]["lastPrice"].replace(",","."))
+
+                cur.execute("UPDATE assets SET latest_price = ?, latest_price_date = ? WHERE asset_id = ?",(price,today,asset_id))
+
+        self.db.commit()
+
 if __name__ == "__main__":
     db = DatabaseHandler("data/asset_data.db")
     stat_calculator = StatCalculator(db)
+    stat_calculator.update_prices()
     stat_calculator.calculate_stats()
     stat_calculator.print_stats(period="year",deposits="current")
