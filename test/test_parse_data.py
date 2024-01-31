@@ -1,8 +1,7 @@
 import pytest
 
 from database_handler import DatabaseHandler
-from add_data import DataAdder, SpecialCases
-from data_parser import DataParser, AssetDeficit
+from data_parser import DataParser, AssetDeficit, SpecialCases
 
 # Define all datasets to be used that should pass
 passing_datasets = [
@@ -18,7 +17,7 @@ def databases(tmp_path, request):
     # Create a temporary SQLite database in the tmp_path directory
     db_file = tmp_path / "test_asset_data.db"
     # Create DataAdder object
-    data_adder = DataAdder(DatabaseHandler(db_file), SpecialCases("./test/data/special_cases_test.json"))
+    data_adder = DataParser(DatabaseHandler(db_file), SpecialCases("./test/data/special_cases_test.json"))
     # Add data to database
     # The dataset used is specified in the test function that uses this fixture
     data_adder.add_data(request.param)
@@ -31,7 +30,7 @@ def database_small_deficit(tmp_path):
     # Create a temporary SQLite database in the tmp_path directory
     db_file = tmp_path / "test_asset_data.db"
     # Create DataAdder object
-    data_adder = DataAdder(DatabaseHandler(db_file))
+    data_adder = DataParser(DatabaseHandler(db_file))
     # Add data to database
     data_adder.add_data("./test/data/small_data.csv")
     return DatabaseHandler(db_file)
@@ -42,7 +41,7 @@ def database_small_diff_accounts(tmp_path):
     # Create a temporary SQLite database in the tmp_path directory
     db_file = tmp_path / "test_asset_data.db"
     # Create DataAdder object
-    data_adder = DataAdder(DatabaseHandler(db_file),SpecialCases("./test/data/special_cases_test.json"))
+    data_adder = DataParser(DatabaseHandler(db_file),SpecialCases("./test/data/special_cases_test.json"))
     # Add data to database
     data_adder.add_data("./test/data/small_data_diff_accounts.csv")
     return DatabaseHandler(db_file)
@@ -54,7 +53,7 @@ def database_small_wrong_accounts(tmp_path):
     # Create a temporary SQLite database in the tmp_path directory
     db_file = tmp_path / "test_asset_data.db"
     # Create DataAdder object
-    data_adder = DataAdder(DatabaseHandler(db_file),SpecialCases("./test/data/special_cases_test.json"))
+    data_adder = DataParser(DatabaseHandler(db_file),SpecialCases("./test/data/special_cases_test.json"))
     # Add data to database
     data_adder.add_data("./test/data/small_data_wrong_accounts.csv")
     return DatabaseHandler(db_file)

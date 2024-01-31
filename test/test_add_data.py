@@ -1,7 +1,7 @@
 import pytest
 
 from database_handler import DatabaseHandler
-from add_data import SpecialCases, DataAdder
+from data_parser import SpecialCases, DataParser
 
 @pytest.fixture(scope='function')
 def db(tmp_path):
@@ -15,15 +15,15 @@ def special_cases():
 
 def test_data_adder_init(db,special_cases):
     # Create DataAdder object
-    data_adder = DataAdder(db,special_cases)
+    data_adder = DataParser(db,special_cases)
     assert data_adder is not None
     # Create DataAdder object without special cases
-    data_adder = DataAdder(db)
+    data_adder = DataParser(db)
     assert data_adder is not None
 
 def test_data_adder_add_data(db,special_cases):
     # Create DataAdder object
-    data_adder = DataAdder(db,special_cases)
+    data_adder = DataParser(db,special_cases)
     # Add data to database
     rows_added = data_adder.add_data("./test/data/small_data.csv")
     # Check that the correct number of rows were added
