@@ -567,9 +567,6 @@ if __name__ == "__main__":
 
     # Print number of rows added to the database
     print("Added {} rows to the database".format(rows_added))
-
-    # Create DataParser object
-    data_parser = DataParser(db)
+    
     # Process transactions
-    data_parser.process_transactions()
-
+    data_adder.process_transactions()
