@@ -240,6 +240,16 @@ class DataParser:
         logging.info("Added {} rows to the database".format(rows_added))
         return rows_added
     
+    def reset_processed_transactions(self) -> None:
+        """
+        Resets the processed flag for all transactions in the database. Also resets month_data, month_assets and assets tables.
+        """
+        self.data_cur.execute("UPDATE transactions SET processed = 0")
+        self.db.reset_table("month_data")
+        self.db.reset_table("month_assets")
+        self.db.reset_table("assets")
+        self.db.commit()
+
     def allocate_to_month(self, transaction_date: date) -> date:
         """
         Takes a date and returns which month the transaction should be allocated to.
