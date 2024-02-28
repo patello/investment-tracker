@@ -432,6 +432,27 @@ class DataParser:
         self.transaction_cur.execute("UPDATE transactions SET processed = 1 WHERE rowid = ?",(row[-1],))
         self.transaction_cur.execute("SELECT *,rowid FROM transactions WHERE processed == 0 ORDER BY date ASC")
 
+    def handle_interest(self, row: tuple) -> None:
+        """
+        Takes a transaction row and adds the dividend amount proporionally to the capital of all the month(s) with that available capital.
+
+        Parameters:
+        row (tuple): A row from the transactions table in the database.
+        """
+        dividend_month = self.allocate_to_month(row[0])
+        remaining_amount = row[6]
+        month_capital = self.available_capital()
+        total_capital = sum([month[1] for month in month_capital])
+        dividend_per_capital = remaining_amount/total_capital
+        for (month,capital) in month_capital:
+                self.data_cur.execute("UPDATE month_data SET capital = capital + ? WHERE month = ?",(capital*dividend_per_capital,month))
+                remaining_amount -= capital
+        if remaining_amount > 0:
+            self.data_cur.execute("UPDATE month_data SET capital = capital + ? WHERE month = ?",(remaining_amount,dividend_month))
+        # Reset transaction_cur since new funds are available
+        self.transaction_cur.execute("UPDATE transactions SET processed = 1 WHERE rowid = ?",(row[-1],))
+        self.transaction_cur.execute("SELECT *,rowid FROM transactions WHERE processed == 0 ORDER BY date ASC")
+
     def handle_fees(self, row: tuple) -> None:
         """
         Takes a transaction row and subtracts the fee amount from the capital of the oldest month(s) with available capital.
@@ -526,7 +547,13 @@ class DataParser:
                 self.handle_sale(row)
             elif row[2] == "Utdelning":
                 self.handle_dividend(row)
-            elif "Utländsk källskatt" in row[2] or "Ränt" in row[2] or "Prelskatt" in row[2] or "Preliminärskatt" in row[2]:
+            elif row[2] == "Räntor" or row[2] == "Ränta":
+                # Interest can either be negative and handled as a fee, or positive and handled like a dividend on capital
+                if row[6] > 0:
+                    self.handle_interest(row)
+                else:
+                    self.handle_fees(row)
+            elif "Utländsk källskatt" in row[2] in row[2] or "Prelskatt" in row[2] or "Preliminärskatt" in row[2]:
                 self.handle_fees(row)
             elif "Byte" in row[2] or row[2] == "Övrigt":
                 self.handle_listing_change(row)
