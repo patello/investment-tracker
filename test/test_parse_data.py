@@ -97,6 +97,29 @@ def test_data_parser__diff_accounts(database_small_diff_accounts):
     assert database_small_diff_accounts.get_db_stat("Processed" ) == unprocessed
     assert database_small_diff_accounts.get_db_stat("Unprocessed" ) == 0 
 
+@pytest.mark.parametrize('databases', [passing_datasets[0]], indirect=True)
+def test_data_parser__reset(databases):
+    # Create DataParser object
+    data_parser = DataParser(databases)
+    # Connect to database and get number of unprocessed transactions
+    databases.connect()
+    unprocessed = databases.get_db_stat("Unprocessed" )
+    # Process transactions
+    data_parser.process_transactions()
+    # Check that all previously unprocessed transactions are now processed
+    assert databases.get_db_stat("Processed" ) == unprocessed
+    assert databases.get_db_stat("Unprocessed" ) == 0
+    # Reset the database
+    data_parser.reset_processed_transactions()
+    # Check that all previously processed transactions are now unprocessed
+    assert databases.get_db_stat("Processed" ) == 0
+    assert databases.get_db_stat("Unprocessed" ) == unprocessed
+    # Test that all transactions can be processed again
+    data_parser.process_transactions()
+    assert databases.get_db_stat("Processed" ) == unprocessed
+    assert databases.get_db_stat("Unprocessed" ) == 0
+
+
 # Functionality not implemented yet
 @pytest.mark.xfail(reason="Functionality not implemented yet")
 def test_data_parser__wrong_accounts(database_small_wrong_accounts):
