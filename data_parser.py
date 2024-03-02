@@ -180,13 +180,12 @@ class DataParser:
         """
         return 0.0 if number_string == "-" else float(number_string.replace(",","."))
     
-    def add_data(self, file_path: str, special_cases: SpecialCases = None) -> int:
+    def add_data(self, file_path: str) -> int:
         """
         Takes a path to a csv file downloaded from Avanza and adds the data to the database.
 
         Parameters:
         file_path (str): Path to csv file downloaded from Avanza.
-        special_cases (SpecialCases): SpecialCases object that handles special rules when adding data to the database.
 
         Returns:
         int: Number of rows added to the database.
