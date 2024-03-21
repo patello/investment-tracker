@@ -7,3 +7,6 @@
 *.pyo
 *.pyd
 __pycache__/
+
+#VSCode files
+/.vscode/
