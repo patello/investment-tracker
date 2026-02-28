@@ -36,6 +36,65 @@ This project is a work in progress and will be updated as I go along.
 
 ## Usage
 
+### Command Line Interface (CLI)
+
+A unified CLI is available via `cli.py`. It provides subcommands for all major operations:
+
+```bash
+# Parse a CSV file (automatically detects old/new Avanza format)
+python cli.py parse data/newdata.csv
+
+# Parse and immediately process transactions
+python cli.py parse data/newdata.csv --process
+
+# Process transactions already in the database
+python cli.py process
+
+# Reset processed flag for all transactions (useful for reprocessing)
+python cli.py reset
+
+# Fetch latest prices from Avanza API
+python cli.py update-prices
+
+# Calculate monthly and yearly statistics
+python cli.py calculate-stats
+
+# Show statistics (default: month, current deposits)
+python cli.py show-stats
+python cli.py show-stats --period year --deposits all --accumulated
+
+# Run the full pipeline: parse, process, update prices, calculate stats, show stats
+python cli.py run-all data/newdata.csv
+```
+
+All commands accept optional `--database` and `--special-cases` arguments to override default paths:
+
+```bash
+python cli.py --database path/to/db.db --special-cases path/to/special.json parse data.csv
+```
+
+### CSV Format Support
+
+The parser automatically detects whether your CSV file uses Avanza's old or new export format (the new format includes a `Transaktionsvaluta` column). The following transaction types are recognized:
+
+- Insättning (deposit)
+- Uttag (withdrawal)
+- Köp (purchase)
+- Sälj (sale)
+- Utdelning (dividend)
+- Räntor / Ränta / Inlåningsränta (interest)
+- Utländsk källskatt / Prelskatt / Preliminärskatt (taxes)
+- Byte / Övrigt (listing changes)
+- Tillgångsinsättning (asset deposit)
+
+Empty numeric fields (like `Antal`, `Kurs`) are treated as zero.
+
+**Price fetching note:** The `update-prices` command (and the original `calculate_stats.py`) fetches current asset prices from Avanza's public search API (`www.avanza.se/_api/search/filtered-search`). This API is intended for web frontend use and may have rate limits or terms of service restrictions. Use at your own risk and consider using official APIs if available. Always review the website's terms of service before using their data.
+
+### Original Scripts (Alternative)
+
+You can still use the original scripts directly:
+
 1. Add data in the `data` folder.
     - You might need to create a "special_cases.json" file in order to match and replace certain values in the data. See file specification in the documentation for the SpecialCases class.
     - You will probably need to update the process_transactions function in the DataParser class to match your data.
