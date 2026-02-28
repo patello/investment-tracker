@@ -40,8 +40,8 @@ This project is a work in progress and will be updated as I go along.
     - You might need to create a "special_cases.json" file in order to match and replace certain values in the data. See file specification in the documentation for the SpecialCases class.
     - You will probably need to update the process_transactions function in the DataParser class to match your data.
 2. Run the script "data_parser.py" with `python data_parser.py`.
-3. Run the script calculate_statistics.py with `python calculate_statistics.py`.
-    - Note, this script uses an investment platform as the source for the current values of the assets. This is only for demonstration purposes and please use a proper API which you have access to. Please check any terms and conditions for the website that you use before using this script.
+3. Run the script calculate_stats.py with `python calculate_stats.py`.
+    - Note: This script fetches current asset prices from Avanza's public search API (`www.avanza.se/_api/search/filtered-search`). This API is intended for web frontend use and may have rate limits or terms of service restrictions. Use at your own risk and consider using official APIs if available. Always review the website's terms of service before using their data.
 
 ## Contributing
 

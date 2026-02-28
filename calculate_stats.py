@@ -3,6 +3,7 @@ from database_handler import DatabaseHandler
 import requests
 import json
 import logging
+import time
 
 logging.basicConfig(level=logging.INFO)
 
@@ -365,21 +366,45 @@ class StatCalculator:
         
 
         assets = cur.execute("SELECT asset,asset_id FROM assets WHERE amount > 0").fetchall()
-        url = "https://www.avanza.se/_cqbe/search/global-search/global-search-template?query={asset}"
+        
+        # Current working endpoint (discovered 2026-02-27)
+        url = "https://www.avanza.se/_api/search/filtered-search"
+        headers = {
+            "User-Agent": (
+                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36"
+            ),
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+        }
 
         for (asset,asset_id) in assets:
-            url_name = asset
-            # If asset has a slash, everything after the slash should be dropped
-            if url_name.find("/") > 0:
-                url_name = url_name.split("/",1)[0]
-
-            r = requests.get(url.format(asset=url_name))
+            r = requests.post(url, headers=headers, json={"query": asset, "limit": 5}, timeout=10)
 
             if r.status_code == 200:
-                resp = json.loads(r.content)
-                price = float(resp["resultGroups"][0]["hits"][0]["lastPrice"].replace(",","."))
-
-                cur.execute("UPDATE assets SET latest_price = ?, latest_price_date = ? WHERE asset_id = ?",(price,today,asset_id))
+                resp = r.json()
+                # Check if we have hits and price data
+                if "hits" in resp and len(resp["hits"]) > 0:
+                    hit = resp["hits"][0]
+                    if "price" in hit and hit["price"] and "last" in hit["price"]:
+                        price_str = hit["price"]["last"]
+                        # Strip non-breaking spaces used as thousands separator, spaces, replace comma with dot
+                        raw_price = price_str.replace("\u00a0", "").replace(" ", "").replace(",", ".")
+                        try:
+                            price = float(raw_price)
+                            cur.execute("UPDATE assets SET latest_price = ?, latest_price_date = ? WHERE asset_id = ?",
+                                        (price, today, asset_id))
+                        except ValueError:
+                            logging.warning(f"Could not parse price '{price_str}' for asset {asset}")
+                    else:
+                        logging.warning(f"No price field in response for asset {asset}")
+                else:
+                    logging.warning(f"No hits in response for asset {asset}")
+            else:
+                logging.warning(f"HTTP {r.status_code} for asset {asset}")
+            
+            # Be polite to the API
+            time.sleep(0.05)
 
         self.db.commit()
 
