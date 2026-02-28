@@ -47,3 +47,23 @@ def test_data_adder_add_data(db,special_cases):
     db.connect()
     assert db.get_db_stats(["Transactions"])["Transactions"] == rows_added+new_rows_added
     db.disconnect()
+
+def test_data_adder_new_format(db):
+    # Test that the new CSV format (with Transaktionsvaluta column) is parsed correctly
+    data_adder = DataParser(db)
+    rows_added = data_adder.add_data("./test/data/new_format_data.csv")
+    # Check that all 5 rows were added
+    assert rows_added == 5
+    # Check database row count
+    db.connect()
+    assert db.get_db_stats(["Transactions"])["Transactions"] == rows_added
+    # Check that currency and courtage were mapped correctly for first row
+    cur = db.conn.cursor()
+    row = cur.execute("SELECT currency, courtage FROM transactions ORDER BY date DESC LIMIT 1").fetchone()
+    assert row[0] == "SEK"
+    assert row[1] == 0.0
+    db.disconnect()
+
+    # Add same data again — should add 0 rows (dedup check)
+    new_rows_added = data_adder.add_data("./test/data/new_format_data.csv")
+    assert new_rows_added == 0

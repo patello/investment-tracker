@@ -178,7 +178,7 @@ class DataParser:
         Returns:
         float: The number as a float.
         """
-        return 0.0 if number_string == "-" else float(number_string.replace(",","."))
+        return 0.0 if number_string in ("-", "") else float(number_string.replace(",","."))
     
     def add_data(self, file_path: str) -> int:
         """
@@ -193,9 +193,9 @@ class DataParser:
         # file_path = ./data/newdata.csv
         avanza_data_file = open(file_path,"r")
         avanza_data = csv.reader(avanza_data_file, delimiter=';')
-        # Currently unused, but could be used to check that the file is in the correct format
-        # next() used to skip header row
+        # Detect CSV format version from header row
         avanza_header_row = next(avanza_data)
+        new_format = "Transaktionsvaluta" in avanza_header_row
         avanza_data = list(avanza_data)
 
         # Find overlapping transactions to avoid adding douplicates
@@ -213,13 +213,24 @@ class DataParser:
 
         #Add transactions to database
         for transaction in avanza_data:
-            row = (\
-                datetime.strptime(transaction[0], "%Y-%m-%d").date(),\
-                transaction[1],transaction[2],transaction[3],\
-                self.convert_number(transaction[4]),self.convert_number(transaction[5]),\
-                self.convert_number(transaction[6]),self.convert_number(transaction[7]),\
-                transaction[8],transaction[9]
-                )
+            if new_format:
+                # New format: Datum;Konto;Typ;Värdepapper;Antal;Kurs;Belopp;Transaktionsvaluta;Courtage;Valutakurs;Instrumentvaluta;ISIN;Resultat
+                row = (\
+                    datetime.strptime(transaction[0], "%Y-%m-%d").date(),\
+                    transaction[1],transaction[2],transaction[3],\
+                    self.convert_number(transaction[4]),self.convert_number(transaction[5]),\
+                    self.convert_number(transaction[6]),self.convert_number(transaction[8]),\
+                    transaction[7],transaction[11]
+                    )
+            else:
+                # Old format: Datum;Konto;Typ;Värdepapper;Antal;Kurs;Belopp;Courtage;Valuta;ISIN;Resultat
+                row = (\
+                    datetime.strptime(transaction[0], "%Y-%m-%d").date(),\
+                    transaction[1],transaction[2],transaction[3],\
+                    self.convert_number(transaction[4]),self.convert_number(transaction[5]),\
+                    self.convert_number(transaction[6]),self.convert_number(transaction[7]),\
+                    transaction[8],transaction[9]
+                    )
             # If special_cases is not None, handle special cases
             if self.special_cases != None:
                 row = self.special_cases.handle_special_cases(row)
@@ -546,7 +557,7 @@ class DataParser:
                 self.handle_sale(row)
             elif row[2] == "Utdelning":
                 self.handle_dividend(row)
-            elif row[2] == "Räntor" or row[2] == "Ränta":
+            elif row[2] == "Räntor" or row[2] == "Ränta" or row[2] == "Inlåningsränta":
                 # Interest can either be negative and handled as a fee, or positive and handled like a dividend on capital
                 if row[6] > 0:
                     self.handle_interest(row)
