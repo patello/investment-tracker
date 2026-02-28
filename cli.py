@@ -27,7 +27,7 @@ def parse_data(args):
         data_parser = DataParser(db, special_cases)
         rows_added = data_parser.add_data(args.file)
         print(f"Added {rows_added} rows to the database")
-        if args.process:
+        if getattr(args, 'process', False):
             data_parser.process_transactions()
             print("Transactions processed")
         return 0
