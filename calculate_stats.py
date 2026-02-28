@@ -379,12 +379,7 @@ class StatCalculator:
         }
 
         for (asset,asset_id) in assets:
-            url_name = asset
-            # If asset has a slash, everything after the slash should be dropped
-            if url_name.find("/") > 0:
-                url_name = url_name.split("/",1)[0]
-
-            r = requests.post(url, headers=headers, json={"query": url_name, "limit": 5}, timeout=10)
+            r = requests.post(url, headers=headers, json={"query": asset, "limit": 5}, timeout=10)
 
             if r.status_code == 200:
                 resp = r.json()
