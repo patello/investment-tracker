@@ -535,6 +535,18 @@ class DataParser:
         self.transaction_cur.execute("UPDATE transactions SET processed = 1 WHERE rowid = ?",(row[-1],))
         self.transaction_cur.execute("SELECT *,rowid FROM transactions WHERE processed == 0 ORDER BY date ASC")
 
+    def handle_ignore(self, row: tuple) -> None:
+        """
+        Marks a transaction as processed without any further action.
+        Used for negligible transactions like tiny fraction write-offs.
+        
+        Parameters:
+        row (tuple): A row from the transactions table in the database.
+        """
+        logging.debug(f"Ignoring transaction {row[0]} {row[2]} {row[3]} with amount {row[6]}")
+        self.transaction_cur.execute("UPDATE transactions SET processed = 1 WHERE rowid = ?", (row[-1],))
+        self.transaction_cur.execute("SELECT *,rowid FROM transactions WHERE processed == 0 ORDER BY date ASC")
+
     def process_transactions(self) -> None:
         """
         Process transactions all transactions in the database that have not been processed yet.
@@ -563,6 +575,9 @@ class DataParser:
                     self.handle_interest(row)
                 else:
                     self.handle_fees(row)
+            elif row[2] == "Utbokning fraktioner":
+                # Tiny fraction write-off, ignore (negligible amount)
+                self.handle_ignore(row)
             elif "Utländsk källskatt" in row[2] in row[2] or "Prelskatt" in row[2] or "Preliminärskatt" in row[2]:
                 self.handle_fees(row)
             elif "Byte" in row[2] or row[2] == "Övrigt":
