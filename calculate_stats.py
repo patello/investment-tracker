@@ -41,7 +41,8 @@ class StatCalculator:
             month_assets = cur.execute("SELECT asset_id, amount FROM month_assets WHERE month = ? AND amount > 0.001", (month,)).fetchall()
             for (asset_id, amount) in month_assets:
                 (price,) = cur.execute("SELECT latest_price FROM assets WHERE asset_id = ?", (asset_id,)).fetchone()
-                value += amount*price
+                if price is not None:
+                    value += amount*price
 
             total_gainloss = withdrawal + value - deposit
             if(withdrawal + capital >= deposit or (withdrawal + capital < deposit and value <= 0)):
