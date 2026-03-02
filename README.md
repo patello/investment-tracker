@@ -135,6 +135,26 @@ Empty numeric fields (like `Antal`, `Kurs`) are treated as zero.
 
 **Price fetching note:** The `update-prices` command (and the original `calculate_stats.py`) fetches current asset prices from Avanza's public search API (`www.avanza.se/_api/search/filtered-search`). This API is intended for web frontend use and may have rate limits or terms of service restrictions. Use at your own risk and consider using official APIs if available. Always review the website's terms of service before using their data.
 
+### Per-Account Cash Tracking
+
+By default, the system treats all cash as a single pool across all accounts. This can lead to "phantom cash" appearing in investment accounts when savings account cash is used for purchases. To track cash separately for each account, use the `--per-account` flag:
+
+```bash
+python cli.py --per-account parse data/newdata.csv
+python cli.py --per-account process
+```
+
+When enabled:
+- Deposits are allocated to the specific account's capital
+- Withdrawals and purchases only use capital from the same account
+- Sales add capital back to the account where the sale occurred
+- Interest is distributed to the account where it was earned
+- Fees are deducted from the account where they occurred
+
+Note: Assets are still tracked globally (not per account). Dividends are added to the global capital pool. Statistics are calculated globally regardless of this setting.
+
+This feature can be enabled or disabled at any time. If you switch modes, you should reset and reprocess all transactions for consistent results.
+
 ### Original Scripts (Alternative)
 
 You can still use the original scripts directly:

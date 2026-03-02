@@ -107,6 +107,17 @@ class DatabaseHandler:
                 capital REAL DEFAULT 0,
                 PRIMARY KEY(month)
                 );""")
+        
+        # month_account_data contains capital per account per month (for per-account cash tracking)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS month_account_data(
+                month DATE NOT NULL,
+                account TEXT NOT NULL,
+                deposit REAL DEFAULT 0,
+                withdrawal REAL DEFAULT 0,
+                capital REAL DEFAULT 0,
+                PRIMARY KEY(month, account)
+                );""")
 
         # assets contains the total amount of each asset and the latest price
         cursor.execute("""

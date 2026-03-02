@@ -24,7 +24,7 @@ def parse_data(args):
     try:
         db = DatabaseHandler(args.database)
         special_cases = SpecialCases(args.special_cases) if args.special_cases else None
-        data_parser = DataParser(db, special_cases)
+        data_parser = DataParser(db, special_cases, per_account_capital=args.per_account)
         rows_added = data_parser.add_data(args.file)
         print(f"Added {rows_added} rows to the database")
         if getattr(args, 'process', False):
@@ -41,7 +41,7 @@ def process_transactions(args):
     try:
         db = DatabaseHandler(args.database)
         special_cases = SpecialCases(args.special_cases) if args.special_cases else None
-        data_parser = DataParser(db, special_cases)
+        data_parser = DataParser(db, special_cases, per_account_capital=args.per_account)
         data_parser.process_transactions()
         print("Transactions processed successfully")
         return 0
@@ -55,7 +55,7 @@ def reset_processed(args):
     try:
         db = DatabaseHandler(args.database)
         special_cases = SpecialCases(args.special_cases) if args.special_cases else None
-        data_parser = DataParser(db, special_cases)
+        data_parser = DataParser(db, special_cases, per_account_capital=args.per_account)
         data_parser.reset_processed_transactions()
         print("Processed transactions reset")
         return 0
@@ -150,6 +150,11 @@ def main():
         "--special-cases",
         default="data/special_cases.json",
         help="Path to special cases JSON file (optional, defaults to data/special_cases.json)",
+    )
+    parser.add_argument(
+        "--per-account",
+        action="store_true",
+        help="Track capital per account instead of globally",
     )
     
     subparsers = parser.add_subparsers(dest="command", help="Command to execute")
