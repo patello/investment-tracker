@@ -1,0 +1,4 @@
+Datum;Konto;Typ av transaktion;Värdepapper/beskrivning;Antal;Kurs;Belopp;Courtage;Valuta;ISIN;Resultat
+2020-06-15;1111111;Insättning;Direktinsättning från Danske Bank;-;-;100;0;SEK;;-
+2021-06-15;1111111;Insättning;Direktinsättning från Danske Bank;-;-;100;0;SEK;;-
+2022-06-15;1111111;Ränta;;-;-;1;-;SEK;;-
