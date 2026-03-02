@@ -136,3 +136,90 @@ def test_data_parser__wrong_accounts(database_small_wrong_accounts):
     assert database_small_wrong_accounts.get_db_stat("Processed" ) == 0
     assert database_small_wrong_accounts.get_db_stat("Unprocessed" ) == unprocessed
 
+def test_interest_distribution_proportional(tmp_path):
+    """Test that interest is distributed proportionally to capital in all months."""
+    # Create a temporary database
+    db_file = tmp_path / "test_interest.db"
+    db = DatabaseHandler(db_file)
+    
+    # Add test transactions: two deposits, then interest
+    db.connect()
+    cur = db.conn.cursor()
+    
+    test_transactions = [
+        ('2020-06-15', '1111111', 'Insättning', '', 0, 0, 100, 0, 'SEK', ''),
+        ('2021-06-15', '1111111', 'Insättning', '', 0, 0, 100, 0, 'SEK', ''),
+        ('2022-06-15', '1111111', 'Ränta', '', 0, 0, 60, 0, 'SEK', ''),
+    ]
+    
+    for trans in test_transactions:
+        cur.execute('''
+            INSERT INTO transactions 
+            (date, account, transaction_type, asset_name, amount, price, total, courtage, currency, isin, processed)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
+        ''', trans)
+    
+    db.conn.commit()
+    db.disconnect()
+    
+    # Process transactions
+    parser = DataParser(db)
+    parser.process_transactions()
+    
+    # Check results
+    db.connect()
+    cur = db.conn.cursor()
+    
+    # Get capital by month
+    cur.execute('SELECT month, capital FROM month_data WHERE capital > 0 ORDER BY month')
+    month_data = cur.fetchall()
+    
+    db.disconnect()
+    
+    # Both months should have capital (100 deposit + 30 interest each)
+    assert len(month_data) == 2
+    for month, capital in month_data:
+        assert abs(capital - 130) < 0.01  # 100 + 30
+    
+def test_interest_distribution_rounding(tmp_path):
+    """Test that interest rounding errors are properly distributed."""
+    # Create a temporary database
+    db_file = tmp_path / "test_interest_rounding.db"
+    db = DatabaseHandler(db_file)
+    
+    # Add test transactions: deposit with repeating decimal interest
+    db.connect()
+    cur = db.conn.cursor()
+    
+    test_transactions = [
+        ('2020-06-15', '1111111', 'Insättning', '', 0, 0, 101, 0, 'SEK', ''),
+        ('2021-06-15', '1111111', 'Ränta', '', 0, 0, 33, 0, 'SEK', ''),
+    ]
+    
+    for trans in test_transactions:
+        cur.execute('''
+            INSERT INTO transactions 
+            (date, account, transaction_type, asset_name, amount, price, total, courtage, currency, isin, processed)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
+        ''', trans)
+    
+    db.conn.commit()
+    db.disconnect()
+    
+    # Process transactions
+    parser = DataParser(db)
+    parser.process_transactions()
+    
+    # Check results
+    db.connect()
+    cur = db.conn.cursor()
+    
+    # Get total capital
+    cur.execute('SELECT SUM(capital) FROM month_data')
+    total_capital = cur.fetchone()[0]
+    
+    db.disconnect()
+    
+    # All interest should be distributed (101 + 33 = 134)
+    assert abs(total_capital - 134) < 0.01
+
