@@ -57,9 +57,8 @@ class SpecialCases:
         file_path (str): Path to json file containing special cases.
         """
         # Read special cases from json file
-        special_cases_file = open(file_path, "r")
-        special_cases = json.load(special_cases_file)
-        special_cases_file.close()
+        with open(file_path, "r") as special_cases_file:
+            special_cases = json.load(special_cases_file)
 
         # Define a mapping from operator strings to functions
         ops = {
@@ -191,12 +190,12 @@ class DataParser:
         int: Number of rows added to the database.
         """
         # file_path = ./data/newdata.csv
-        avanza_data_file = open(file_path,"r")
-        avanza_data = csv.reader(avanza_data_file, delimiter=';')
-        # Detect CSV format version from header row
-        avanza_header_row = next(avanza_data)
-        new_format = "Transaktionsvaluta" in avanza_header_row
-        avanza_data = list(avanza_data)
+        with open(file_path, "r") as avanza_data_file:
+            avanza_data = csv.reader(avanza_data_file, delimiter=';')
+            # Detect CSV format version from header row
+            avanza_header_row = next(avanza_data)
+            new_format = "Transaktionsvaluta" in avanza_header_row
+            avanza_data = list(avanza_data)
 
         # Find overlapping transactions to avoid adding douplicates
         max_date = max([datetime.strptime(row[0],"%Y-%m-%d") for row in avanza_data]).date()

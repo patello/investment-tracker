@@ -1,4 +1,17 @@
 import sqlite3
+from datetime import date
+
+def adapt_date(val):
+    """Convert datetime.date to ISO format string."""
+    return val.isoformat()
+
+def convert_date(val):
+    """Convert ISO format string to datetime.date."""
+    return date.fromisoformat(val.decode() if isinstance(val, bytes) else val)
+
+# Register the adapter and converter
+sqlite3.register_adapter(date, adapt_date)
+sqlite3.register_converter("date", convert_date)
 
 class DatabaseHandler:
     """
