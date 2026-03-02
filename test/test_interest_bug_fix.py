@@ -220,8 +220,3 @@ def test_patello_scenario():
         if os.path.exists(db_path):
             os.unlink(db_path)
 
-if __name__ == '__main__':
-    test_interest_distribution_with_rounding()
-    test_interest_proportional_distribution()
-    test_patello_scenario()
-    print("\n✅ All tests passed - interest attribution bug is fixed!")
