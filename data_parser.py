@@ -460,7 +460,7 @@ class DataParser:
         dividend_per_capital = remaining_amount/total_capital
         for (month,capital) in month_capital:
                 self.data_cur.execute("UPDATE month_data SET capital = capital + ? WHERE month = ?",(capital*dividend_per_capital,month))
-                remaining_amount -= capital
+                remaining_amount -= capital*dividend_per_capital
         if remaining_amount > 0:
             self.data_cur.execute("UPDATE month_data SET capital = capital + ? WHERE month = ?",(remaining_amount,dividend_month))
         # Reset transaction_cur since new funds are available
