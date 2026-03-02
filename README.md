@@ -155,6 +155,13 @@ Note: Assets are still tracked globally (not per account). Dividends are added t
 
 This feature can be enabled or disabled at any time. If you switch modes, you should reset and reprocess all transactions for consistent results.
 
+**Important**: The `--per-account` flag must be used consistently for all operations on the same database:
+- Use `--per-account` when parsing **and** processing transactions
+- Use `--per-account` when processing previously parsed transactions
+- Use `--per-account` when resetting processed transactions
+
+If you forget to use the flag or change modes, reset and reprocess all transactions to maintain consistency.
+
 ### Original Scripts (Alternative)
 
 You can still use the original scripts directly:
