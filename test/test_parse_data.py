@@ -12,7 +12,8 @@ passing_datasets = [
     "./test/data/interest_fees.csv",
     "./test/data/fraction_writeoff.csv",
     "./test/data/interest_proportional.csv",
-    "./test/data/interest_rounding.csv"]
+    "./test/data/interest_rounding.csv",
+    "./test/data/interest_repeating_decimal.csv"]
 
 # Parametrize the fixture
 # Indirect parametrization allows us to use different datasets for the same fixture
@@ -192,5 +193,35 @@ def test_interest_distribution_rounding(tmp_path):
     db.disconnect()
     
     # All interest should be distributed (101 + 33 = 134)
+    # With the bug, rounding errors might not be distributed
     assert abs(total_capital - 134) < 0.01
+
+def test_interest_repeating_decimal(tmp_path):
+    """Test interest distribution with repeating decimals that might cause rounding errors."""
+    # Create a temporary database
+    db_file = tmp_path / "test_interest_repeating.db"
+    db = DatabaseHandler(db_file)
+    
+    # Add data from CSV
+    data_adder = DataParser(db)
+    data_adder.add_data("./test/data/interest_repeating_decimal.csv")
+    
+    # Process transactions
+    parser = DataParser(db)
+    parser.process_transactions()
+    
+    # Check results
+    db.connect()
+    cur = db.conn.cursor()
+    
+    # Get total capital
+    cur.execute('SELECT SUM(capital) FROM month_data')
+    total_capital = cur.fetchone()[0]
+    
+    db.disconnect()
+    
+    # All interest should be distributed (100 + 200 + 7 = 307)
+    # With the bug, rounding errors might cause slightly less than 307
+    # With the fix, any rounding errors should be added to dividend_month
+    assert abs(total_capital - 307) < 0.01
 
