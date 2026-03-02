@@ -95,11 +95,18 @@ def show_stats(args):
     try:
         db = DatabaseHandler(args.database)
         stat_calculator = StatCalculator(db)
-        print(f"{args.period.capitalize()} stats:")
-        stat_calculator.print_stats(period=args.period, deposits=args.deposits)
-        if args.accumulated:
-            print(f"Accumulated {args.period} stats:")
-            stat_calculator.print_accumulated(period=args.period, deposits=args.deposits)
+        
+        if args.per_account:
+            # Show per-account cash statistics
+            print("Per-account cash statistics:")
+            stat_calculator.print_account_cash_stats()
+        else:
+            # Show regular statistics (global)
+            print(f"{args.period.capitalize()} stats:")
+            stat_calculator.print_stats(period=args.period, deposits=args.deposits)
+            if args.accumulated:
+                print(f"Accumulated {args.period} stats:")
+                stat_calculator.print_accumulated(period=args.period, deposits=args.deposits)
         return 0
     except Exception as e:
         logging.error(f"Failed to show statistics: {e}")

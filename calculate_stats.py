@@ -337,6 +337,45 @@ class StatCalculator:
                     print("APY: {apy:.1f}%".format(apy=annual_per_yield))
                 print("")
 
+    def get_account_cash_stats(self) -> list:
+        """
+        Get per-account cash statistics from month_account_data table.
+        Returns list of (account, month, deposit, withdrawal, capital) tuples.
+        """
+        self.db.connect()
+        cur = self.db.get_cursor()
+        # Check if month_account_data table exists
+        table_exists = cur.execute("""
+            SELECT name FROM sqlite_master 
+            WHERE type='table' AND name='month_account_data'
+        """).fetchone()
+        if not table_exists:
+            return []
+        
+        stats = cur.execute("""
+            SELECT account, month, deposit, withdrawal, capital 
+            FROM month_account_data 
+            ORDER BY account, month ASC
+        """).fetchall()
+        return stats
+
+    def print_account_cash_stats(self) -> None:
+        """
+        Print per-account cash statistics.
+        """
+        stats = self.get_account_cash_stats()
+        if not stats:
+            print("No per-account cash data available. Process transactions with --per-account flag to generate this data.")
+            return
+        
+        current_account = None
+        for (account, month, deposit, withdrawal, capital) in stats:
+            if account != current_account:
+                print(f"\nAccount: {account}")
+                print("Month, Deposit, Withdrawal, Capital")
+                current_account = account
+            print(f"{month}: {deposit:.2f}, {withdrawal:.2f}, {capital:.2f}")
+
     def update_prices(self, force: bool = False):
         """
         Update prices in database. Prices are fetched from external site. 
