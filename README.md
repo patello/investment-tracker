@@ -28,6 +28,9 @@ This project is a work in progress and will be updated as I go along.
     - Realized Gain/Loss
     - Unrealized Gain/Loss
     - APY (Annual Percentage Yield)
+- Two viewing modes:
+    - **Period-specific**: Track performance of investments made in each month/year
+    - **Accumulated**: See total portfolio value over time with assets carried forward
 
 ## Installation
 
@@ -72,6 +75,47 @@ All commands accept optional `--database` and `--special-cases` arguments to ove
 ```bash
 python cli.py --database path/to/db.db --special-cases path/to/special.json parse data.csv
 ```
+
+### Understanding Statistics Output
+
+The statistics output has two modes that serve different purposes:
+
+#### 1. Regular Statistics (Default)
+```bash
+python cli.py show-stats --period month
+```
+- **Shows**: Activity for each specific month/year
+- **"Value" column**: Current value of deposits made **during that specific period**
+- **If zero deposits in a period**: Value = 0 (by definition)
+- **If everything withdrawn**: Value = 0 (deposits fully withdrawn)
+- **Use case**: Track performance of investments made in each period
+
+#### 2. Accumulated Statistics
+```bash
+python cli.py show-stats --period month --accumulated
+```
+- **Shows**: Cumulative portfolio value over time
+- **"Value" column**: Total portfolio value at period end (all assets held)
+- **Carries forward**: Assets from earlier periods continue to appear
+- **Use case**: See total portfolio growth over time
+
+#### Example
+**January 2024:**
+- Deposit: 10,000 SEK
+- Buy Asset A: 10,000 SEK
+- Current price of Asset A: 12,000 SEK
+
+**February 2024:**
+- No deposits/withdrawals
+- Asset A still held (worth 12,000 SEK)
+
+**Regular stats show:**
+- January: Value = 12,000 SEK (value of January deposit)
+- February: Value = 0 (no February deposits)
+
+**Accumulated stats show:**
+- January: Value = 12,000 SEK
+- February: Value = 12,000 SEK (asset carried forward)
 
 ### CSV Format Support
 
