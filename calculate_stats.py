@@ -62,7 +62,8 @@ class StatCalculator:
 
             middle_date = month.replace(day=15)
             if today >= middle_date + timedelta(365.25) and total_gainloss_per !=0:
-                annual_per_yield = 100*((total_gainloss_per/100+1)**(1/((datetime.today().date()-middle_date).days/365.25))-1)
+                base = total_gainloss_per/100+1
+                annual_per_yield = 100*(base**(1/((datetime.today().date()-middle_date).days/365.25))-1) if base > 0 else None
             else:
                 annual_per_yield = None
 
@@ -138,7 +139,8 @@ class StatCalculator:
 
             middle_date = datetime(year=year.year,month=7,day=1).date()
             if datetime.today().date() >= middle_date + timedelta(365.25) and total_gainloss_per !=0:
-                annual_per_yield = 100*((total_gainloss_per/100+1)**(1/((datetime.today().date()-middle_date).days/365.25))-1)
+                base = total_gainloss_per/100+1
+                annual_per_yield = 100*(base**(1/((datetime.today().date()-middle_date).days/365.25))-1) if base > 0 else None
             else:
                 annual_per_yield = None
 
