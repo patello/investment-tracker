@@ -24,7 +24,7 @@ class AssetDeficit(Exception):
         super().__init__(message)
         self.data_parser = data_parser
         logging.error(message)
-        data_parser.transaction_cur.execute("SELECT *,rowid FROM transactions WHERE processed == 0 ORDER BY date ASC, CASE WHEN transaction_type IN ('Insättning', 'Intern överföring') THEN 0 ELSE 1 END ASC, rowid ASC")
+        data_parser.transaction_cur.execute("SELECT *,rowid FROM transactions WHERE processed == 0 ORDER BY date ASC, rowid ASC")
         logging.error("Unprocessed transactions:")
         for row in data_parser.transaction_cur.fetchall():
             logging.error(row)
@@ -330,7 +330,7 @@ class DataParser:
         self.data_cur.execute("UPDATE month_data SET capital = capital + ?, deposit = deposit + ? WHERE month = ? AND account = ?", (amount, amount, month, account))
         # Reset transaction_cur since new funds are available
         self.transaction_cur.execute("UPDATE transactions SET processed = 1 WHERE rowid = ?",(row[-1],))
-        self.transaction_cur.execute("SELECT *,rowid FROM transactions WHERE processed == 0 ORDER BY date ASC, CASE WHEN transaction_type IN ('Insättning', 'Intern överföring') THEN 0 ELSE 1 END ASC, rowid ASC")
+        self.transaction_cur.execute("SELECT *,rowid FROM transactions WHERE processed == 0 ORDER BY date ASC, rowid ASC")
 
     def handle_withdrawal(self, row: tuple) -> None:
         """
@@ -355,7 +355,7 @@ class DataParser:
                 remaining_amount -= month_amount
                 i += 1
             self.transaction_cur.execute("UPDATE transactions SET processed = 1 WHERE rowid = ?",(row[-1],))
-            self.transaction_cur.execute("SELECT *,rowid FROM transactions WHERE processed == 0 ORDER BY date ASC, CASE WHEN transaction_type IN ('Insättning', 'Intern överföring') THEN 0 ELSE 1 END ASC, rowid ASC")
+            self.transaction_cur.execute("SELECT *,rowid FROM transactions WHERE processed == 0 ORDER BY date ASC, rowid ASC")
 
     def handle_purchase(self, row: tuple) -> None: 
         """
@@ -392,7 +392,7 @@ class DataParser:
                 i += 1
             # Reset transaction_cur since new assets are available
             self.transaction_cur.execute("UPDATE transactions SET processed = 1 WHERE rowid = ?",(row[-1],))
-            self.transaction_cur.execute("SELECT *,rowid FROM transactions WHERE processed == 0 ORDER BY date ASC, CASE WHEN transaction_type IN ('Insättning', 'Intern överföring') THEN 0 ELSE 1 END ASC, rowid ASC")
+            self.transaction_cur.execute("SELECT *,rowid FROM transactions WHERE processed == 0 ORDER BY date ASC, rowid ASC")
  
     def handle_sale(self, row: tuple) -> None:
         """
@@ -428,7 +428,7 @@ class DataParser:
                 i += 1
             # Reset transaction_cur since new funds are available
             self.transaction_cur.execute("UPDATE transactions SET processed = 1 WHERE rowid = ?",(row[-1],))
-            self.transaction_cur.execute("SELECT *,rowid FROM transactions WHERE processed == 0 ORDER BY date ASC, CASE WHEN transaction_type IN ('Insättning', 'Intern överföring') THEN 0 ELSE 1 END ASC, rowid ASC")
+            self.transaction_cur.execute("SELECT *,rowid FROM transactions WHERE processed == 0 ORDER BY date ASC, rowid ASC")
 
     def handle_dividend(self, row: tuple) -> None:
         """
@@ -457,7 +457,7 @@ class DataParser:
             self.data_cur.execute("UPDATE month_data SET capital = capital + ? WHERE month = ? AND account = ?", (remaining_amount*dividend_per_asset, dividend_month, account))
         # Reset transaction_cur since new funds are available
         self.transaction_cur.execute("UPDATE transactions SET processed = 1 WHERE rowid = ?",(row[-1],))
-        self.transaction_cur.execute("SELECT *,rowid FROM transactions WHERE processed == 0 ORDER BY date ASC, CASE WHEN transaction_type IN ('Insättning', 'Intern överföring') THEN 0 ELSE 1 END ASC, rowid ASC")
+        self.transaction_cur.execute("SELECT *,rowid FROM transactions WHERE processed == 0 ORDER BY date ASC, rowid ASC")
 
     def handle_interest(self, row: tuple) -> None:
         """
@@ -484,7 +484,7 @@ class DataParser:
             self.data_cur.execute("UPDATE month_data SET capital = capital + ? WHERE month = ? AND account = ?", (remaining_amount, dividend_month, account))
         # Reset transaction_cur since new funds are available
         self.transaction_cur.execute("UPDATE transactions SET processed = 1 WHERE rowid = ?",(row[-1],))
-        self.transaction_cur.execute("SELECT *,rowid FROM transactions WHERE processed == 0 ORDER BY date ASC, CASE WHEN transaction_type IN ('Insättning', 'Intern överföring') THEN 0 ELSE 1 END ASC, rowid ASC")
+        self.transaction_cur.execute("SELECT *,rowid FROM transactions WHERE processed == 0 ORDER BY date ASC, rowid ASC")
 
     def handle_fees(self, row: tuple) -> None:
         """
@@ -509,7 +509,7 @@ class DataParser:
                 remaining_amount -= month_amount
                 i += 1
             self.transaction_cur.execute("UPDATE transactions SET processed = 1 WHERE rowid = ?",(row[-1],))
-            self.transaction_cur.execute("SELECT *,rowid FROM transactions WHERE processed == 0 ORDER BY date ASC, CASE WHEN transaction_type IN ('Insättning', 'Intern överföring') THEN 0 ELSE 1 END ASC, rowid ASC")
+            self.transaction_cur.execute("SELECT *,rowid FROM transactions WHERE processed == 0 ORDER BY date ASC, rowid ASC")
 
     def handle_listing_change(self, row: tuple) -> None:
         """
@@ -532,7 +532,7 @@ class DataParser:
             change_factor = self.listing_change["to_asset_amount"]/amount
             self.data_cur.execute("UPDATE month_assets SET amount = amount * ? WHERE asset_id = ?",(change_factor,asset_id))
             self.transaction_cur.execute("UPDATE transactions SET processed = 1 WHERE rowid = ? OR rowid = ?",(row[-1],self.listing_change["to_rowid"],))
-            self.transaction_cur.execute("SELECT *,rowid FROM transactions WHERE processed == 0 ORDER BY date ASC, CASE WHEN transaction_type IN ('Insättning', 'Intern överföring') THEN 0 ELSE 1 END ASC, rowid ASC")
+            self.transaction_cur.execute("SELECT *,rowid FROM transactions WHERE processed == 0 ORDER BY date ASC, rowid ASC")
             self.listing_change = {"to_asset":None,"to_asset_amount":None,"to_rowid":None}
     
     def handle_asset_deposit(self, row: tuple) -> None:
@@ -560,7 +560,7 @@ class DataParser:
         self.data_cur.execute("UPDATE month_data SET deposit = deposit + ? WHERE month = ? AND account = ?", (amount*price, month, account))
         # Reset transaction_cur since new assets are available
         self.transaction_cur.execute("UPDATE transactions SET processed = 1 WHERE rowid = ?",(row[-1],))
-        self.transaction_cur.execute("SELECT *,rowid FROM transactions WHERE processed == 0 ORDER BY date ASC, CASE WHEN transaction_type IN ('Insättning', 'Intern överföring') THEN 0 ELSE 1 END ASC, rowid ASC")
+        self.transaction_cur.execute("SELECT *,rowid FROM transactions WHERE processed == 0 ORDER BY date ASC, rowid ASC")
 
     def handle_ignore(self, row: tuple) -> None:
         """
@@ -572,7 +572,7 @@ class DataParser:
         """
         logging.debug(f"Ignoring transaction {row[0]} {row[2]} {row[3]} with amount {row[6]}")
         self.transaction_cur.execute("UPDATE transactions SET processed = 1 WHERE rowid = ?", (row[-1],))
-        self.transaction_cur.execute("SELECT *,rowid FROM transactions WHERE processed == 0 ORDER BY date ASC, CASE WHEN transaction_type IN ('Insättning', 'Intern överföring') THEN 0 ELSE 1 END ASC, rowid ASC")
+        self.transaction_cur.execute("SELECT *,rowid FROM transactions WHERE processed == 0 ORDER BY date ASC, rowid ASC")
 
     def handle_internal_transfer(self, row: tuple) -> None:
         """
@@ -603,7 +603,7 @@ class DataParser:
             logging.debug(f"Internal transfer IN: +{total} to account {account} in month {month}")
             # Reset transaction cursor so newly available capital can be used immediately
             self.transaction_cur.execute("UPDATE transactions SET processed = 1 WHERE rowid = ?", (row[-1],))
-            self.transaction_cur.execute("SELECT *,rowid FROM transactions WHERE processed == 0 ORDER BY date ASC, CASE WHEN transaction_type IN ('Insättning', 'Intern överföring') THEN 0 ELSE 1 END ASC, rowid ASC")
+            self.transaction_cur.execute("SELECT *,rowid FROM transactions WHERE processed == 0 ORDER BY date ASC, rowid ASC")
         else:
             # Sending end: remove capital from this account's oldest available months (FIFO)
             amount = -total  # Make positive
@@ -625,7 +625,7 @@ class DataParser:
                 )
             logging.debug(f"Internal transfer OUT: -{amount} from account {account}")
             self.transaction_cur.execute("UPDATE transactions SET processed = 1 WHERE rowid = ?", (row[-1],))
-            self.transaction_cur.execute("SELECT *,rowid FROM transactions WHERE processed == 0 ORDER BY date ASC, CASE WHEN transaction_type IN ('Insättning', 'Intern överföring') THEN 0 ELSE 1 END ASC, rowid ASC")
+            self.transaction_cur.execute("SELECT *,rowid FROM transactions WHERE processed == 0 ORDER BY date ASC, rowid ASC")
 
     def handle_remove_shares(self, row: tuple) -> None:
         """
@@ -655,7 +655,7 @@ class DataParser:
                 i += 1
             # Reset transaction_cur
             self.transaction_cur.execute("UPDATE transactions SET processed = 1 WHERE rowid = ?", (row[-1],))
-            self.transaction_cur.execute("SELECT *,rowid FROM transactions WHERE processed == 0 ORDER BY date ASC, CASE WHEN transaction_type IN ('Insättning', 'Intern överföring') THEN 0 ELSE 1 END ASC, rowid ASC")
+            self.transaction_cur.execute("SELECT *,rowid FROM transactions WHERE processed == 0 ORDER BY date ASC, rowid ASC")
         else:
             # Not enough shares - this shouldn't happen for valid Byte transactions
             logging.warning(f"Not enough shares to remove for {asset}: have {total_asset_amount}, need {asset_amount}")
@@ -667,7 +667,7 @@ class DataParser:
         After attempting to processing all transactions, the function checks if there are any unprocessed transactions left.
         If there are, an AssetDeficit exception is raised and the database is rolled back. Otherwise, the changes are committed.
         """
-        unprocessed_lines = self.transaction_cur.execute("SELECT *,rowid FROM transactions WHERE processed == 0 ORDER BY date ASC, CASE WHEN transaction_type IN ('Insättning', 'Intern överföring') THEN 0 ELSE 1 END ASC, rowid ASC")
+        unprocessed_lines = self.transaction_cur.execute("SELECT *,rowid FROM transactions WHERE processed == 0 ORDER BY date ASC, rowid ASC")
         row = unprocessed_lines.fetchone()
         #Consider upgrading to python3.8 to make this more elegant with := statment
         while row is not None:
