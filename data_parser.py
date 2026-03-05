@@ -623,9 +623,10 @@ class DataParser:
                     f"Internal transfer OUT: account {account} had insufficient capital "
                     f"(needed {amount}, short by {remaining:.2f})"
                 )
-            logging.debug(f"Internal transfer OUT: -{amount} from account {account}")
-            self.transaction_cur.execute("UPDATE transactions SET processed = 1 WHERE rowid = ?", (row[-1],))
-            self.transaction_cur.execute("SELECT *,rowid FROM transactions WHERE processed == 0 ORDER BY date ASC, rowid ASC")
+            else:
+                logging.debug(f"Internal transfer OUT: -{amount} from account {account}")
+                self.transaction_cur.execute("UPDATE transactions SET processed = 1 WHERE rowid = ?", (row[-1],))
+                self.transaction_cur.execute("SELECT *,rowid FROM transactions WHERE processed == 0 ORDER BY date ASC, rowid ASC")
 
     def handle_remove_shares(self, row: tuple) -> None:
         """
