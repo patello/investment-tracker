@@ -28,7 +28,7 @@ class StatCalculator:
         # Get month data
         cur = self.db.get_cursor()
         today = datetime.today().date()
-        month_data = cur.execute("SELECT month, deposit, withdrawal, capital FROM month_data ORDER BY month ASC").fetchall()
+        month_data = cur.execute("SELECT month, SUM(deposit), SUM(withdrawal), SUM(capital) FROM month_data GROUP BY month ORDER BY month ASC").fetchall()
         acc_deposit = 0
         acc_value = 0
         acc_withdrawal = 0
