@@ -98,14 +98,15 @@ class DatabaseHandler:
                 processed INT DEFAULT 0
                 )""")
 
-        # month_data contains the total capital, deposits and withdrawals for each month
+        # month_data contains the capital, deposits and withdrawals per account per month
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS month_data(
-                month DATE NOT NULL, 
+                month DATE NOT NULL,
+                account TEXT NOT NULL,
                 deposit REAL DEFAULT 0,
                 withdrawal REAL DEFAULT 0,
                 capital REAL DEFAULT 0,
-                PRIMARY KEY(month)
+                PRIMARY KEY(month, account)
                 );""")
 
         # assets contains the total amount of each asset and the latest price
@@ -135,7 +136,6 @@ class DatabaseHandler:
                 average_sale_price REAL DEFAULT 0,
                 purchased_amount REAL DEFAULT 0,
                 sold_amount REAL DEFAULT 0,
-                FOREIGN KEY (month) REFERENCES month_data (month), 
                 FOREIGN KEY (asset_id) REFERENCES assets (asset_id)
                 PRIMARY KEY(month, asset_id)
                 );""")
