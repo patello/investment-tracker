@@ -418,6 +418,94 @@ class StatCalculator:
 
         self.db.commit()
 
+    def summarize_accounts(self) -> list:
+        """
+        Summarize current value and cash amount for each account.
+        
+        Returns:
+        list: List of tuples (account, asset_value, cash, total_value)
+        """
+        self.db.connect()
+        cur = self.db.get_cursor()
+        
+        # Get cash per account
+        account_cash = cur.execute(
+            "SELECT account, SUM(capital) FROM month_data GROUP BY account"
+        ).fetchall()
+        
+        # Get asset value per month
+        month_asset_values = cur.execute("""
+            SELECT ma.month, SUM(ma.amount * a.latest_price) as month_value
+            FROM month_assets ma
+            JOIN assets a ON ma.asset_id = a.asset_id
+            WHERE ma.amount > 0 AND a.latest_price IS NOT NULL
+            GROUP BY ma.month
+        """).fetchall()
+        
+        # Convert to dict for easy lookup
+        month_values = {month: value for month, value in month_asset_values}
+        
+        # Get deposits per account per month
+        account_month_deposits = cur.execute("""
+            SELECT month, account, deposit
+            FROM month_data 
+            WHERE deposit > 0
+        """).fetchall()
+        
+        # Calculate total deposits per month
+        month_total_deposits = {}
+        for month, account, deposit in account_month_deposits:
+            month_total_deposits[month] = month_total_deposits.get(month, 0) + deposit
+        
+        # Distribute month asset values to accounts based on deposit proportions
+        account_assets = {}
+        for month, account, deposit in account_month_deposits:
+            if month in month_values and month in month_total_deposits:
+                month_value = month_values[month]
+                total_deposit = month_total_deposits[month]
+                if total_deposit > 0:
+                    account_share = month_value * (deposit / total_deposit)
+                    account_assets[account] = account_assets.get(account, 0) + account_share
+        
+        # Combine cash and assets
+        result = []
+        for account, cash in account_cash:
+            asset_value = account_assets.get(account, 0)
+            total_value = asset_value + cash
+            result.append((account, asset_value, cash, total_value))
+        
+        # Sort by account name
+        result.sort(key=lambda x: x[0])
+        return result
+
+    def print_account_summary(self) -> None:
+        """
+        Print a summary of current value and cash for each account.
+        """
+        accounts = self.summarize_accounts()
+        
+        if not accounts:
+            print("No account data available.")
+            return
+        
+        print("\n=== Account Summary ===")
+        print(f"{'Account':<12} {'Assets':>12} {'Cash':>12} {'Total':>12}")
+        print("-" * 48)
+        
+        total_assets = 0
+        total_cash = 0
+        total_all = 0
+        
+        for account, asset_value, cash, total_value in accounts:
+            print(f"{account:<12} {asset_value:>12.0f} {cash:>12.0f} {total_value:>12.0f}")
+            total_assets += asset_value
+            total_cash += cash
+            total_all += total_value
+        
+        print("-" * 48)
+        print(f"{'TOTAL':<12} {total_assets:>12.0f} {total_cash:>12.0f} {total_all:>12.0f}")
+        print()
+
 if __name__ == "__main__":
     db = DatabaseHandler("data/asset_data.db")
     stat_calculator = StatCalculator(db)
@@ -429,3 +517,5 @@ if __name__ == "__main__":
     print("Year stats:")
     stat_calculator.print_stats(period="year",deposits="current")
     stat_calculator.print_accumulated(period="year",deposits="current")
+    print("Account summary:")
+    stat_calculator.print_account_summary()
