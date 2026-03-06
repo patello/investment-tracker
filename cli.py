@@ -2,14 +2,14 @@
 """
 CLI interface for the Avanza investment tracker.
 
-Provides command-line access to data parsing, transaction processing,
+Provides command-line access to data import, transaction processing,
 price updates, and statistics calculation.
 """
 
 import argparse
 import sys
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from database_handler import DatabaseHandler
 from data_parser import DataParser, SpecialCases
@@ -19,72 +19,150 @@ from calculate_stats import StatCalculator
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 
 
-def parse_data(args):
-    """Parse CSV data from Avanza and add to database."""
+def get_db(args):
+    """Get database handler with connection."""
+    db = DatabaseHandler(args.database)
+    db.connect()
+    return db
+
+
+def prices_are_fresh(db, max_age_days=1):
+    """
+    Check if prices are fresh (updated within max_age_days).
+    
+    Returns:
+    bool: True if prices are fresh, False otherwise
+    str: Oldest price date or None if no prices
+    """
+    cur = db.get_cursor()
+    # Get oldest price date for assets with amount > 0
+    result = cur.execute(
+        "SELECT MIN(latest_price_date) FROM assets WHERE amount > 0"
+    ).fetchone()
+    
+    if not result or not result[0]:
+        return False, None  # No prices or no assets
+    
+    oldest_price_date = datetime.strptime(result[0], '%Y-%m-%d').date()
+    today = datetime.today().date()
+    
+    is_fresh = oldest_price_date >= today - timedelta(days=max_age_days)
+    return is_fresh, oldest_price_date
+
+
+def stats_need_recalculation(db):
+    """
+    Check if statistics need recalculation.
+    
+    Stats need recalculation if:
+    1. Never calculated before
+    2. Transactions processed since last calculation
+    3. Prices updated since last calculation
+    """
+    last_stats = db.get_metadata('last_stats_calculation')
+    last_processed = db.get_metadata('last_processed')
+    
+    if not last_stats:
+        return True  # Never calculated
+    
+    # Check if transactions processed since last calculation
+    if last_processed and last_processed > last_stats:
+        return True
+    
+    # Check if prices updated since last calculation
+    cur = db.get_cursor()
+    result = cur.execute(
+        "SELECT MAX(latest_price_date) FROM assets WHERE latest_price_date IS NOT NULL"
+    ).fetchone()
+    
+    if result and result[0]:
+        latest_price_date = result[0]
+        if latest_price_date > last_stats:
+            return True
+    
+    return False
+
+
+def import_data(args):
+    """Import CSV data and process transactions."""
+    db = get_db(args)
+    special_cases = SpecialCases(args.special_cases) if args.special_cases else None
+    data_parser = DataParser(db, special_cases)
+    
     try:
-        db = DatabaseHandler(args.database)
-        special_cases = SpecialCases(args.special_cases) if args.special_cases else None
-        data_parser = DataParser(db, special_cases)
+        # Import data
         rows_added = data_parser.add_data(args.file)
-        print(f"Added {rows_added} rows to the database")
-        if getattr(args, 'process', False):
-            data_parser.process_transactions()
-            print("Transactions processed")
-        return 0
-    except Exception as e:
-        logging.error(f"Failed to parse data: {e}")
-        return 1
-
-
-def process_transactions(args):
-    """Process transactions in the database."""
-    try:
-        db = DatabaseHandler(args.database)
-        special_cases = SpecialCases(args.special_cases) if args.special_cases else None
-        data_parser = DataParser(db, special_cases)
+        logging.info(f"Added {rows_added} rows to the database")
+        
+        # Process transactions
         data_parser.process_transactions()
-        print("Transactions processed successfully")
+        logging.info("Transactions processed")
+        
+        # Update metadata
+        now = datetime.now().isoformat()
+        db.set_metadata('last_import', now)
+        db.set_metadata('last_processed', now)
+        
+        # Clear stats timestamp since we have new data
+        db.set_metadata('last_stats_calculation', '')
+        
+        logging.info("Import completed")
         return 0
+        
     except Exception as e:
-        logging.error(f"Failed to process transactions: {e}")
+        logging.error(f"Import failed: {e}")
         return 1
 
 
-def reset_processed(args):
-    """Reset processed flag for all transactions."""
+def update_prices(args, force=False):
+    """Update prices for all assets."""
+    db = get_db(args)
+    
+    if not force:
+        fresh, oldest_date = prices_are_fresh(db)
+        if fresh:
+            logging.info(f"Prices are already fresh (oldest: {oldest_date})")
+            return 0
+    
     try:
-        db = DatabaseHandler(args.database)
-        special_cases = SpecialCases(args.special_cases) if args.special_cases else None
-        data_parser = DataParser(db, special_cases)
-        data_parser.reset_processed_transactions()
-        print("Processed transactions reset")
+        stat_calc = StatCalculator(db)
+        stat_calc.update_prices()
+        
+        # Update metadata
+        now = datetime.now().isoformat()
+        db.set_metadata('last_price_update', now)
+        
+        # Clear stats timestamp since prices changed
+        db.set_metadata('last_stats_calculation', '')
+        
+        logging.info("Prices updated successfully")
         return 0
-    except Exception as e:
-        logging.error(f"Failed to reset processed transactions: {e}")
-        return 1
-
-
-def update_prices(args):
-    """Fetch latest prices from Avanza API."""
-    try:
-        db = DatabaseHandler(args.database)
-        stat_calculator = StatCalculator(db)
-        stat_calculator.update_prices()
-        print("Prices updated")
-        return 0
+        
     except Exception as e:
         logging.error(f"Failed to update prices: {e}")
         return 1
 
 
-def calculate_stats(args):
-    """Calculate monthly and yearly statistics."""
-    try:
-        db = DatabaseHandler(args.database)
-        stat_calculator = StatCalculator(db)
-        stat_calculator.calculate_stats()
-        print("Statistics calculated")
+def calculate_stats(args, force=False):
+    """Calculate statistics if needed."""
+    db = get_db(args)
+    
+    if not force and not stats_need_recalculation(db):
+        logging.info("Statistics are up to date")
         return 0
+    
+    try:
+        stat_calc = StatCalculator(db)
+        stat_calc.calculate_month_stats()
+        stat_calc.calculate_year_stats()
+        
+        # Update metadata
+        now = datetime.now().isoformat()
+        db.set_metadata('last_stats_calculation', now)
+        
+        logging.info("Statistics calculated")
+        return 0
+        
     except Exception as e:
         logging.error(f"Failed to calculate statistics: {e}")
         return 1
@@ -92,134 +170,190 @@ def calculate_stats(args):
 
 def show_stats(args):
     """Display statistics."""
+    db = get_db(args)
+    stat_calc = StatCalculator(db)
+    
     try:
-        db = DatabaseHandler(args.database)
-        stat_calculator = StatCalculator(db)
-        print(f"{args.period.capitalize()} stats:")
-        stat_calculator.print_stats(period=args.period, deposits=args.deposits)
+        kwargs = {'period': args.period, 'deposits': args.deposits}
+        
         if args.accumulated:
-            print(f"Accumulated {args.period} stats:")
-            stat_calculator.print_accumulated(period=args.period, deposits=args.deposits)
+            stat_calc.print_accumulated(**kwargs)
+        else:
+            stat_calc.print_stats(**kwargs)
         return 0
+        
     except Exception as e:
         logging.error(f"Failed to show statistics: {e}")
         return 1
 
 
-def run_all(args):
-    """Run the full pipeline: parse, process, update prices, calculate stats."""
-    exit_codes = []
+def stats(args):
+    """Smart statistics command with automatic updates."""
+    db = get_db(args)
     
-    # Parse data if file provided
-    if args.file:
-        exit_codes.append(parse_data(args))
-        if any(ec != 0 for ec in exit_codes):
-            return max(exit_codes)
+    # Update prices if needed
+    if args.update_prices == 'always':
+        update_prices(args, force=True)
+    elif args.update_prices == 'auto':
+        fresh, oldest_date = prices_are_fresh(db)
+        if not fresh:
+            logging.info(f"Prices are stale (oldest: {oldest_date}), updating...")
+            update_prices(args, force=True)
     
-    # Process transactions
-    exit_codes.append(process_transactions(args))
-    if any(ec != 0 for ec in exit_codes):
-        return max(exit_codes)
-    
-    # Update prices
-    exit_codes.append(update_prices(args))
-    if any(ec != 0 for ec in exit_codes):
-        return max(exit_codes)
-    
-    # Calculate stats
-    exit_codes.append(calculate_stats(args))
-    if any(ec != 0 for ec in exit_codes):
-        return max(exit_codes)
+    # Calculate stats if needed
+    if args.force or stats_need_recalculation(db):
+        calculate_stats(args, force=True)
     
     # Show stats
-    show_stats(args)
-    return max(exit_codes) if exit_codes else 0
+    return show_stats(args)
+
+
+def status(args):
+    """Show system status."""
+    db = get_db(args)
+    
+    print("=== Investment Tracker Status ===")
+    
+    # Database stats
+    stats_list = ["Transactions", "Processed", "Unprocessed", "Assets", "Capital"]
+    db_stats = db.get_db_stats(stats_list)
+    
+    print(f"\nDatabase:")
+    print(f"  Transactions: {db_stats.get('Transactions', 0)}")
+    print(f"  Processed: {db_stats.get('Processed', 0)}")
+    print(f"  Unprocessed: {db_stats.get('Unprocessed', 0)}")
+    print(f"  Assets: {db_stats.get('Assets', 0)}")
+    print(f"  Capital: {db_stats.get('Capital', 0):.0f} SEK")
+    
+    # Price freshness
+    fresh, oldest_date = prices_are_fresh(db)
+    price_status = "Fresh" if fresh else "Stale"
+    print(f"\nPrices:")
+    print(f"  Status: {price_status}")
+    if oldest_date:
+        print(f"  Oldest price date: {oldest_date}")
+    
+    # Metadata
+    metadata = db.get_all_metadata()
+    print(f"\nMetadata:")
+    for key in ['last_import', 'last_processed', 'last_price_update', 'last_stats_calculation']:
+        value = metadata.get(key, 'Never')
+        print(f"  {key}: {value}")
+    
+    # Stats freshness
+    needs_recalc = stats_need_recalculation(db)
+    print(f"\nStatistics:")
+    print(f"  Need recalculation: {'Yes' if needs_recalc else 'No'}")
+    
+    return 0
+
+
+def reset(args):
+    """Reset database state."""
+    db = get_db(args)
+    special_cases = SpecialCases(args.special_cases) if args.special_cases else None
+    data_parser = DataParser(db, special_cases)
+    
+    try:
+        data_parser.reset_processed_transactions()
+        
+        # Clear metadata
+        for key in ['last_processed', 'last_stats_calculation']:
+            db.set_metadata(key, '')
+        
+        logging.info("Database reset successfully")
+        return 0
+        
+    except Exception as e:
+        logging.error(f"Failed to reset database: {e}")
+        return 1
 
 
 def main():
     parser = argparse.ArgumentParser(
         description="Avanza investment tracker CLI",
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  %(prog)s import transactions.csv
+  %(prog)s stats --update-prices auto
+  %(prog)s status
+        """
+    )
+    
+    parser.add_argument(
+        '--database',
+        default='data/asset_data.db',
+        help='Path to SQLite database (default: data/asset_data.db)'
     )
     parser.add_argument(
-        "--database",
-        default="data/asset_data.db",
-        help="Path to SQLite database",
-    )
-    parser.add_argument(
-        "--special-cases",
-        default="data/special_cases.json",
-        help="Path to special cases JSON file (optional, defaults to data/special_cases.json)",
+        '--special-cases',
+        default='data/special_cases.json',
+        help='Path to special cases JSON file (default: data/special_cases.json)'
     )
     
-    subparsers = parser.add_subparsers(dest="command", help="Command to execute")
-    subparsers.required = True
+    subparsers = parser.add_subparsers(dest='command', help='Command to execute')
     
-    # Parse data command
-    parse_parser = subparsers.add_parser("parse", help="Parse CSV data from Avanza")
-    parse_parser.add_argument("file", help="Path to CSV file")
-    parse_parser.add_argument(
-        "--process",
-        action="store_true",
-        help="Process transactions after parsing",
+    # Import command
+    import_parser = subparsers.add_parser('import', help='Import CSV data and process transactions')
+    import_parser.add_argument('file', help='Path to CSV file')
+    import_parser.set_defaults(func=import_data)
+    
+    # Stats command
+    stats_parser = subparsers.add_parser('stats', help='Show statistics with smart updates')
+    stats_parser.add_argument(
+        '--period',
+        choices=['month', 'year'],
+        default='month',
+        help='Time period to show (default: month)'
     )
-    parse_parser.set_defaults(func=parse_data)
-    
-    # Process transactions command
-    process_parser = subparsers.add_parser("process", help="Process transactions in database")
-    process_parser.set_defaults(func=process_transactions)
-    
-    # Reset processed transactions command
-    reset_parser = subparsers.add_parser("reset", help="Reset processed flag for all transactions")
-    reset_parser.set_defaults(func=reset_processed)
-    
-    # Update prices command
-    update_parser = subparsers.add_parser("update-prices", help="Fetch latest prices from Avanza API")
-    update_parser.set_defaults(func=update_prices)
-    
-    # Calculate stats command
-    calc_parser = subparsers.add_parser("calculate-stats", help="Calculate monthly and yearly statistics")
-    calc_parser.set_defaults(func=calculate_stats)
-    
-    # Show stats command
-    show_parser = subparsers.add_parser("show-stats", help="Display statistics")
-    show_parser.add_argument(
-        "--period",
-        choices=["month", "year"],
-        default="month",
-        help="Time period to show",
+    stats_parser.add_argument(
+        '--deposits',
+        choices=['current', 'all'],
+        default='current',
+        help='Which deposits to include (default: current)'
     )
-    show_parser.add_argument(
-        "--deposits",
-        choices=["current", "all"],
-        default="current",
-        help="Which deposits to include",
+    stats_parser.add_argument(
+        '--accumulated',
+        action='store_true',
+        help='Show accumulated statistics'
     )
-    show_parser.add_argument(
-        "--accumulated",
-        action="store_true",
-        help="Show accumulated statistics as well",
+    stats_parser.add_argument(
+        '--update-prices',
+        choices=['auto', 'always', 'never'],
+        default='auto',
+        help='When to update prices (default: auto)'
     )
-    show_parser.set_defaults(func=show_stats)
+    stats_parser.add_argument(
+        '--force',
+        action='store_true',
+        help='Force statistics recalculation'
+    )
+    stats_parser.set_defaults(func=stats)
     
-    # Run all command
-    runall_parser = subparsers.add_parser("run-all", help="Run full pipeline")
-    runall_parser.add_argument(
-        "file",
-        nargs="?",
-        help="Optional CSV file to parse before processing",
-    )
-    runall_parser.set_defaults(func=run_all)
+    # Status command
+    status_parser = subparsers.add_parser('status', help='Show system status')
+    status_parser.set_defaults(func=status)
+    
+    # Reset command
+    reset_parser = subparsers.add_parser('reset', help='Reset database state')
+    reset_parser.set_defaults(func=reset)
+    
+    # Legacy commands (for compatibility)
+    legacy_parser = subparsers.add_parser('update-prices', help='[Legacy] Update prices')
+    legacy_parser.set_defaults(func=lambda args: update_prices(args, force=True))
+    
+    legacy_parser = subparsers.add_parser('calculate-stats', help='[Legacy] Calculate statistics')
+    legacy_parser.set_defaults(func=lambda args: calculate_stats(args, force=True))
     
     args = parser.parse_args()
     
-    # Special handling for run-all where file might be None
-    if args.command == "run-all" and args.file is None:
-        # If no file provided, skip parsing step
-        pass
+    if not args.command:
+        parser.print_help()
+        return 1
     
-    sys.exit(args.func(args))
+    return args.func(args)
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
