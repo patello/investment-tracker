@@ -208,6 +208,13 @@ def stats(args):
     # Display statistics
     try:
         stat_calc = StatCalculator(db)
+        
+        # Show account summary if requested
+        if args.accounts:
+            stat_calc.print_account_summary()
+            return 0
+        
+        # Otherwise show regular statistics
         kwargs = {'period': args.period, 'deposits': args.deposits}
         
         if args.accumulated:
@@ -341,6 +348,11 @@ Examples:
         '--force',
         action='store_true',
         help='Force statistics recalculation'
+    )
+    stats_parser.add_argument(
+        '--accounts',
+        action='store_true',
+        help='Show account summary (assets and cash per account)'
     )
     stats_parser.set_defaults(func=stats)
     
