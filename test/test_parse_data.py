@@ -121,8 +121,6 @@ def test_data_parser__reset(databases):
     assert databases.get_db_stat("Unprocessed" ) == 0
 
 
-# Functionality not implemented yet
-@pytest.mark.xfail(reason="Functionality not implemented yet")
 def test_data_parser__wrong_accounts(database_small_wrong_accounts):
     # Create DataParser object
     data_parser = DataParser(database_small_wrong_accounts)
