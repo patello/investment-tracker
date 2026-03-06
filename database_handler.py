@@ -140,6 +140,13 @@ class DatabaseHandler:
                 PRIMARY KEY(month, asset_id)
                 );""")
         
+        # metadata contains system state information
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS metadata(
+                key TEXT PRIMARY KEY,
+                value TEXT
+                );""")
+        
         # month_stats contains statistics about capital transfers and gain/loss for each month
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS month_stats(
@@ -303,6 +310,58 @@ class DatabaseHandler:
         int or float: Value of the requested stat
         """
         return self.get_db_stats([stat])[stat]
+
+    def set_metadata(self, key: str, value: str) -> None:
+        """
+        Set a metadata key-value pair.
+        
+        Parameters:
+        key (str): Metadata key
+        value (str): Metadata value
+        """
+        if not self.conn:
+            raise Exception("Database connection not established.")
+        
+        cursor = self.conn.cursor()
+        cursor.execute(
+            "INSERT OR REPLACE INTO metadata (key, value) VALUES (?, ?)",
+            (key, value)
+        )
+        self.conn.commit()
+
+    def get_metadata(self, key: str, default: str = None) -> str:
+        """
+        Get a metadata value by key.
+        
+        Parameters:
+        key (str): Metadata key
+        default (str): Default value if key doesn't exist
+        
+        Returns:
+        str: Metadata value or default
+        """
+        if not self.conn:
+            raise Exception("Database connection not established.")
+        
+        cursor = self.conn.cursor()
+        cursor.execute("SELECT value FROM metadata WHERE key = ?", (key,))
+        result = cursor.fetchone()
+        return result[0] if result else default
+
+    def get_all_metadata(self) -> dict:
+        """
+        Get all metadata as a dictionary.
+        
+        Returns:
+        dict: All metadata key-value pairs
+        """
+        if not self.conn:
+            raise Exception("Database connection not established.")
+        
+        cursor = self.conn.cursor()
+        cursor.execute("SELECT key, value FROM metadata")
+        return dict(cursor.fetchall())
+
 
 # Example Usage
 if __name__ == "__main__":
