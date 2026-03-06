@@ -72,26 +72,6 @@ python cli.py status
 python cli.py reset
 ```
 
-#### Legacy Commands (Backward Compatible)
-
-```bash
-# Parse a CSV file (automatically detects old/new Avanza format)
-python cli.py parse data/newdata.csv
-
-# Process transactions already in the database
-python cli.py process
-
-# Fetch latest prices from Avanza API
-python cli.py update-prices
-
-# Calculate monthly and yearly statistics
-python cli.py calculate-stats
-
-# Show statistics (default: month, current deposits)
-python cli.py show-stats
-python cli.py show-stats --period year --deposits all --accumulated
-```
-
 All commands accept optional `--database` and `--special-cases` arguments to override default paths:
 
 ```bash
@@ -114,7 +94,7 @@ The statistics output has two modes that serve different purposes:
 
 #### 1. Regular Statistics (Default)
 ```bash
-python cli.py show-stats --period month
+python cli.py stats --period month
 ```
 - **Shows**: Activity for each specific month/year
 - **"Value" column**: Current value of deposits made **during that specific period**
@@ -124,7 +104,7 @@ python cli.py show-stats --period month
 
 #### 2. Accumulated Statistics
 ```bash
-python cli.py show-stats --period month --accumulated
+python cli.py stats --period month --accumulated
 ```
 - **Shows**: Cumulative portfolio value over time
 - **"Value" column**: Total portfolio value at period end (all assets held)
@@ -165,18 +145,17 @@ The parser automatically detects whether your CSV file uses Avanza's old or new 
 
 Empty numeric fields (like `Antal`, `Kurs`) are treated as zero.
 
-**Price fetching note:** The `update-prices` command (and the original `calculate_stats.py`) fetches current asset prices from Avanza's public search API (`www.avanza.se/_api/search/filtered-search`). This API is intended for web frontend use and may have rate limits or terms of service restrictions. Use at your own risk and consider using official APIs if available. Always review the website's terms of service before using their data.
+**Price fetching note:** The `stats` command (with `--update-prices auto` or `--update-prices always`) fetches current asset prices from Avanza's public search API (`www.avanza.se/_api/search/filtered-search`). This API is intended for web frontend use and may have rate limits or terms of service restrictions. Use at your own risk and consider using official APIs if available. Always review the website's terms of service before using their data.
 
-### Original Scripts (Alternative)
+### Using the CLI (Recommended)
 
-You can still use the original scripts directly, though the CLI is recommended:
+The unified CLI provides all functionality in a streamlined interface:
 
-1. Add data in the `data` folder.
+1. Add transaction data in CSV format to the `data` folder.
     - You might need to create a "special_cases.json" file in order to match and replace certain values in the data. See file specification in the documentation for the SpecialCases class.
-    - You will probably need to update the process_transactions function in the DataParser class to match your data.
-2. Run the script "data_parser.py" with `python data_parser.py`.
-3. Run the script calculate_stats.py with `python calculate_stats.py`.
-    - Note: This script fetches current asset prices from Avanza's public search API (`www.avanza.se/_api/search/filtered-search`). This API is intended for web frontend use and may have rate limits or terms of service restrictions. Use at your own risk and consider using official APIs if available. Always review the website's terms of service before using their data.
+2. Import and process transactions: `python cli.py import data/your_transactions.csv`
+3. View statistics with automatic price updates: `python cli.py stats --update-prices auto`
+4. Check system status: `python cli.py status`
 
 ## Contributing
 
