@@ -49,6 +49,20 @@ def prices_are_fresh(db, max_age_days=1):
     is_fresh = oldest_price_date >= today - timedelta(days=max_age_days)
     return is_fresh, oldest_price_date
 
+def any_assets_need_prices(db):
+    """
+    Check if any assets with amount > 0 have no price date.
+    
+    Returns:
+    bool: True if any assets need prices, False otherwise
+    """
+    cur = db.get_cursor()
+    result = cur.execute(
+        "SELECT COUNT(*) FROM assets WHERE amount > 0 AND latest_price_date IS NULL"
+    ).fetchone()
+    
+    return result and result[0] > 0 if result else False
+
 
 def stats_need_recalculation(db):
     """
@@ -135,7 +149,7 @@ def stats(args):
             logging.info(f"Prices are already fresh (oldest: {oldest_date}), updating anyway...")
         try:
             stat_calc = StatCalculator(db)
-            stat_calc.update_prices()
+            stat_calc.update_prices(force=True)
             
             # Update metadata
             now = datetime.now().isoformat()
@@ -151,11 +165,17 @@ def stats(args):
             
     elif args.update_prices == 'auto':
         fresh, oldest_date = prices_are_fresh(db)
-        if not fresh:
-            logging.info(f"Prices are stale (oldest: {oldest_date}), updating...")
+        need_prices = any_assets_need_prices(db)
+        
+        if not fresh or need_prices:
+            if need_prices:
+                logging.info("Some assets have no prices, updating...")
+            else:
+                logging.info(f"Prices are stale (oldest: {oldest_date}), updating...")
+            
             try:
                 stat_calc = StatCalculator(db)
-                stat_calc.update_prices()
+                stat_calc.update_prices(force=True)
                 
                 # Update metadata
                 now = datetime.now().isoformat()
