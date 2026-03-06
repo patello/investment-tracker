@@ -37,24 +37,49 @@ This project is a work in progress and will be updated as I go along.
 1. Clone the repository.
 2. Install the dependencies with `pip install -r requirements.txt`.
 
+## Quick Start
+
+```bash
+# 1. Import your transaction data
+python cli.py import data/your_transactions.csv
+
+# 2. Get statistics with automatic price updates
+python cli.py stats --update-prices auto --period year --deposits all
+
+# 3. Check system status anytime
+python cli.py status
+```
+
 ## Usage
 
 ### Command Line Interface (CLI)
 
 A unified CLI is available via `cli.py`. It provides subcommands for all major operations:
 
+#### Modern Workflow (Recommended)
+
+```bash
+# Import CSV data and process transactions in one atomic operation
+python cli.py import data/transactions.csv
+
+# Show statistics with smart updates (auto-updates prices if stale)
+python cli.py stats --update-prices auto --period year --deposits all
+
+# Check system status (transactions, prices, metadata)
+python cli.py status
+
+# Reset database state (mark all transactions as unprocessed)
+python cli.py reset
+```
+
+#### Legacy Commands (Backward Compatible)
+
 ```bash
 # Parse a CSV file (automatically detects old/new Avanza format)
 python cli.py parse data/newdata.csv
 
-# Parse and immediately process transactions
-python cli.py parse data/newdata.csv --process
-
 # Process transactions already in the database
 python cli.py process
-
-# Reset processed flag for all transactions (useful for reprocessing)
-python cli.py reset
 
 # Fetch latest prices from Avanza API
 python cli.py update-prices
@@ -65,16 +90,23 @@ python cli.py calculate-stats
 # Show statistics (default: month, current deposits)
 python cli.py show-stats
 python cli.py show-stats --period year --deposits all --accumulated
-
-# Run the full pipeline: parse, process, update prices, calculate stats, show stats
-python cli.py run-all data/newdata.csv
 ```
 
 All commands accept optional `--database` and `--special-cases` arguments to override default paths:
 
 ```bash
-python cli.py --database path/to/db.db --special-cases path/to/special.json parse data.csv
+python cli.py --database path/to/db.db --special-cases path/to/special.json import data.csv
 ```
+
+#### Smart Update Features
+
+The new `stats` command includes intelligent caching and update logic:
+
+- **Price freshness**: Prices are considered "fresh" if updated within 1 day
+- **Auto-update**: `--update-prices auto` updates only if prices are stale
+- **Force update**: `--update-prices always` forces price refresh
+- **Skip update**: `--update-prices never` uses cached prices
+- **Stats caching**: Statistics are recalculated only when needed (new transactions or price updates)
 
 ### Understanding Statistics Output
 
@@ -137,7 +169,7 @@ Empty numeric fields (like `Antal`, `Kurs`) are treated as zero.
 
 ### Original Scripts (Alternative)
 
-You can still use the original scripts directly:
+You can still use the original scripts directly, though the CLI is recommended:
 
 1. Add data in the `data` folder.
     - You might need to create a "special_cases.json" file in order to match and replace certain values in the data. See file specification in the documentation for the SpecialCases class.

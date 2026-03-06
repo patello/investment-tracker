@@ -351,19 +351,28 @@ class StatCalculator:
         today = datetime.today().date()
 
         if not force:
-            # Check if prices are already up to date
-            (latest_price_date_str,) = cur.execute("SELECT MIN(latest_price_date) FROM assets").fetchone()
-            # Even with detect_types=sqlite3.PARSE_DECLTYPES, the MAX function returns a string instead of a date object
-            # Therefore, we need to convert the string to a date object, if it exists
-            if latest_price_date_str is not None:
-                latest_price_date = datetime.strptime(latest_price_date_str, '%Y-%m-%d').date()
+            # Check if prices are already up to date for all currently held assets
+            # First check: any held assets missing prices?
+            result = cur.execute(
+                "SELECT COUNT(*) FROM assets WHERE amount > 0 AND latest_price_date IS NULL"
+            ).fetchone()
+            
+            if result and result[0] > 0:
+                logging.debug(f"Price update needed: {result[0]} held assets missing prices")
             else:
-                latest_price_date = None
-            # If latest price_date is today or later, prices are already up to date
-            # If it is None, then no prices have been fetched yet
-            if latest_price_date is not None and latest_price_date >= today - timedelta(days=1):
-                logging.debug("Prices are already up to date. Latest price date: {latest_price_date}".format(latest_price_date=latest_price_date))
-                return
+                # Second check: get oldest price date for assets with amount > 0
+                (latest_price_date_str,) = cur.execute("SELECT MIN(latest_price_date) FROM assets WHERE amount > 0").fetchone()
+                # Even with detect_types=sqlite3.PARSE_DECLTYPES, the MIN function returns a string instead of a date object
+                # Therefore, we need to convert the string to a date object, if it exists
+                if latest_price_date_str is not None:
+                    latest_price_date = datetime.strptime(latest_price_date_str, '%Y-%m-%d').date()
+                else:
+                    latest_price_date = None
+                # If latest price_date is today or later, prices are already up to date
+                # If it is None, then no prices have been fetched yet
+                if latest_price_date is not None and latest_price_date >= today - timedelta(days=1):
+                    logging.debug("Prices are already up to date. Latest price date: {latest_price_date}".format(latest_price_date=latest_price_date))
+                    return
         
 
         assets = cur.execute("SELECT asset,asset_id FROM assets WHERE amount > 0").fetchall()

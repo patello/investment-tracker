@@ -9,7 +9,7 @@ from datetime import date, datetime
 from functools import reduce
 from database_handler import DatabaseHandler
 
-logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(level=logging.INFO)
 
 class AssetDeficit(Exception):
     """
