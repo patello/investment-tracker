@@ -114,66 +114,80 @@ def import_data(args):
         return 1
 
 
-def update_prices(args, force=False):
-    """Update prices for all assets."""
+
+
+
+
+
+
+
+
+
+def stats(args):
+    """Smart statistics command with automatic updates."""
     db = get_db(args)
     
-    if not force:
+    # Update prices if needed
+    if args.update_prices == 'always':
+        # Force price update
         fresh, oldest_date = prices_are_fresh(db)
         if fresh:
-            logging.info(f"Prices are already fresh (oldest: {oldest_date})")
-            return 0
+            logging.info(f"Prices are already fresh (oldest: {oldest_date}), updating anyway...")
+        try:
+            stat_calc = StatCalculator(db)
+            stat_calc.update_prices()
+            
+            # Update metadata
+            now = datetime.now().isoformat()
+            db.set_metadata('last_price_update', now)
+            
+            # Clear stats timestamp since prices changed
+            db.set_metadata('last_stats_calculation', '')
+            
+            logging.info("Prices updated successfully")
+        except Exception as e:
+            logging.error(f"Failed to update prices: {e}")
+            return 1
+            
+    elif args.update_prices == 'auto':
+        fresh, oldest_date = prices_are_fresh(db)
+        if not fresh:
+            logging.info(f"Prices are stale (oldest: {oldest_date}), updating...")
+            try:
+                stat_calc = StatCalculator(db)
+                stat_calc.update_prices()
+                
+                # Update metadata
+                now = datetime.now().isoformat()
+                db.set_metadata('last_price_update', now)
+                
+                # Clear stats timestamp since prices changed
+                db.set_metadata('last_stats_calculation', '')
+                
+                logging.info("Prices updated successfully")
+            except Exception as e:
+                logging.error(f"Failed to update prices: {e}")
+                return 1
     
+    # Calculate stats if needed
+    if args.force or stats_need_recalculation(db):
+        try:
+            stat_calc = StatCalculator(db)
+            stat_calc.calculate_month_stats()
+            stat_calc.calculate_year_stats()
+            
+            # Update metadata
+            now = datetime.now().isoformat()
+            db.set_metadata('last_stats_calculation', now)
+            
+            logging.info("Statistics calculated")
+        except Exception as e:
+            logging.error(f"Failed to calculate statistics: {e}")
+            return 1
+    
+    # Display statistics
     try:
         stat_calc = StatCalculator(db)
-        stat_calc.update_prices()
-        
-        # Update metadata
-        now = datetime.now().isoformat()
-        db.set_metadata('last_price_update', now)
-        
-        # Clear stats timestamp since prices changed
-        db.set_metadata('last_stats_calculation', '')
-        
-        logging.info("Prices updated successfully")
-        return 0
-        
-    except Exception as e:
-        logging.error(f"Failed to update prices: {e}")
-        return 1
-
-
-def calculate_stats(args, force=False):
-    """Calculate statistics if needed."""
-    db = get_db(args)
-    
-    if not force and not stats_need_recalculation(db):
-        logging.info("Statistics are up to date")
-        return 0
-    
-    try:
-        stat_calc = StatCalculator(db)
-        stat_calc.calculate_month_stats()
-        stat_calc.calculate_year_stats()
-        
-        # Update metadata
-        now = datetime.now().isoformat()
-        db.set_metadata('last_stats_calculation', now)
-        
-        logging.info("Statistics calculated")
-        return 0
-        
-    except Exception as e:
-        logging.error(f"Failed to calculate statistics: {e}")
-        return 1
-
-
-def show_stats(args):
-    """Display statistics."""
-    db = get_db(args)
-    stat_calc = StatCalculator(db)
-    
-    try:
         kwargs = {'period': args.period, 'deposits': args.deposits}
         
         if args.accumulated:
@@ -185,27 +199,6 @@ def show_stats(args):
     except Exception as e:
         logging.error(f"Failed to show statistics: {e}")
         return 1
-
-
-def stats(args):
-    """Smart statistics command with automatic updates."""
-    db = get_db(args)
-    
-    # Update prices if needed
-    if args.update_prices == 'always':
-        update_prices(args, force=True)
-    elif args.update_prices == 'auto':
-        fresh, oldest_date = prices_are_fresh(db)
-        if not fresh:
-            logging.info(f"Prices are stale (oldest: {oldest_date}), updating...")
-            update_prices(args, force=True)
-    
-    # Calculate stats if needed
-    if args.force or stats_need_recalculation(db):
-        calculate_stats(args, force=True)
-    
-    # Show stats
-    return show_stats(args)
 
 
 def status(args):
@@ -339,12 +332,7 @@ Examples:
     reset_parser = subparsers.add_parser('reset', help='Reset database state')
     reset_parser.set_defaults(func=reset)
     
-    # Legacy commands (for compatibility)
-    legacy_parser = subparsers.add_parser('update-prices', help='[Legacy] Update prices')
-    legacy_parser.set_defaults(func=lambda args: update_prices(args, force=True))
-    
-    legacy_parser = subparsers.add_parser('calculate-stats', help='[Legacy] Calculate statistics')
-    legacy_parser.set_defaults(func=lambda args: calculate_stats(args, force=True))
+
     
     args = parser.parse_args()
     
