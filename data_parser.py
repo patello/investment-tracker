@@ -134,6 +134,7 @@ class DataParser:
         special_cases (SpecialCases): SpecialCases object that handles special rules when adding data to the database.
         """
         self.listing_change = {"to_asset":None,"to_asset_amount":None,"to_rowid":None}
+        self.pending_transfer = {"rowid": None, "account": None, "amount": None, "date": None}
         self.db = db
         self.special_cases = special_cases
         # Two cursors are used, one for handling writing processed lines and one responsible for keeping track of unprocessed lines
@@ -577,56 +578,94 @@ class DataParser:
     def handle_internal_transfer(self, row: tuple) -> None:
         """
         Handles 'Intern överföring' (internal transfer between accounts).
-
-        Moves capital between accounts:
-          - Positive total (receiving account): adds capital without incrementing deposit stats.
-          - Negative total (sending account): removes capital from the oldest available month
-            in that account (FIFO), without affecting deposit stats.
+        Processes transfers in pairs (OUT and IN) to preserve FIFO month attribution.
 
         Parameters:
         row (tuple): A row from the transactions table in the database.
         """
-        account = row[1]
-        total = row[6]
-        month = self.allocate_to_month(row[0])
-
-        if total > 0:
-            # Receiving end: add capital to this account (not a deposit, so deposit stays unchanged)
-            self.data_cur.execute(
-                "INSERT OR IGNORE INTO month_data(month, account) VALUES(?,?)",
-                (month, account)
-            )
-            self.data_cur.execute(
-                "UPDATE month_data SET capital = capital + ? WHERE month = ? AND account = ?",
-                (total, month, account)
-            )
-            logging.debug(f"Internal transfer IN: +{total} to account {account} in month {month}")
-            # Reset transaction cursor so newly available capital can be used immediately
-            self.transaction_cur.execute("UPDATE transactions SET processed = 1 WHERE rowid = ?", (row[-1],))
-            self.transaction_cur.execute("SELECT *,rowid FROM transactions WHERE processed == 0 ORDER BY date ASC, rowid ASC")
+        if self.pending_transfer["rowid"] is None:
+            # First of pair
+            self.pending_transfer["rowid"] = row[-1]
+            self.pending_transfer["account"] = row[1]
+            self.pending_transfer["amount"] = row[6]
+            self.pending_transfer["date"] = row[0]
+            # Don't mark processed yet
+            return
+        
+        # Second of pair
+        first_rowid = self.pending_transfer["rowid"]
+        second_rowid = row[-1]
+        
+        # Determine OUT (-) and IN (+)
+        if self.pending_transfer["amount"] < 0:
+            out_account = self.pending_transfer["account"]
+            out_amount = -self.pending_transfer["amount"]
+            in_account = row[1]
+            in_amount = row[6]
         else:
-            # Sending end: remove capital from this account's oldest available months (FIFO)
-            amount = -total  # Make positive
-            month_capital = self.available_capital(account)
-            remaining = amount
-            for oldest_available, available in month_capital:
-                if remaining <= 0:
-                    break
-                month_amount = min(remaining, available)
+            out_account = row[1]
+            out_amount = -row[6]
+            in_account = self.pending_transfer["account"]
+            in_amount = self.pending_transfer["amount"]
+        
+        # Get FIFO allocations from OUT account (following withdrawal pattern)
+        month_capital = self.available_capital(out_account)
+        total_capital = sum(e[1] for e in month_capital)
+        
+        if total_capital + 1e-4 >= out_amount:
+            allocations = []
+            remaining = out_amount
+            i = 0
+            
+            while remaining > 1e-4:
+                (oldest_available, capital) = month_capital[i]
+                month_amount = min(remaining, capital)
+                allocations.append((oldest_available, month_amount))
+                
+                # Remove from OUT account
                 self.data_cur.execute(
                     "UPDATE month_data SET capital = capital - ? WHERE month = ? AND account = ?",
-                    (month_amount, oldest_available, account)
+                    (month_amount, oldest_available, out_account)
                 )
+                
                 remaining -= month_amount
-            if remaining > 1e-3:
-                logging.warning(
-                    f"Internal transfer OUT: account {account} had insufficient capital "
-                    f"(needed {amount}, short by {remaining:.2f})"
+                i += 1
+            
+            # Add to IN account in same months
+            for oldest_available, amount in allocations:
+                self.data_cur.execute(
+                    "INSERT OR IGNORE INTO month_data(month, account) VALUES(?,?)",
+                    (oldest_available, in_account)
                 )
-            else:
-                logging.debug(f"Internal transfer OUT: -{amount} from account {account}")
-                self.transaction_cur.execute("UPDATE transactions SET processed = 1 WHERE rowid = ?", (row[-1],))
-                self.transaction_cur.execute("SELECT *,rowid FROM transactions WHERE processed == 0 ORDER BY date ASC, rowid ASC")
+                self.data_cur.execute(
+                    "UPDATE month_data SET capital = capital + ? WHERE month = ? AND account = ?",
+                    (amount, oldest_available, in_account)
+                )
+            
+            # Mark BOTH processed
+            self.transaction_cur.execute(
+                "UPDATE transactions SET processed = 1 WHERE rowid = ? OR rowid = ?",
+                (first_rowid, second_rowid)
+            )
+            logging.debug(f"Internal transfer pair processed: {out_amount} from {out_account} to {in_account}")
+        
+        else:
+            # Insufficient capital - defer the entire pair
+            logging.debug(
+                f"Internal transfer pair deferred: account {out_account} needs {out_amount}, has {total_capital}"
+            )
+            # Reset pending transfer so both transactions stay unprocessed
+            # They'll be retried later when capital becomes available
+            self.pending_transfer = {"rowid": None, "account": None, "amount": None, "date": None}
+            return
+        
+        # Reset pending transfer
+        self.pending_transfer = {"rowid": None, "account": None, "amount": None, "date": None}
+        
+        # Reset cursor since we marked transactions processed
+        self.transaction_cur.execute(
+            "SELECT *,rowid FROM transactions WHERE processed == 0 ORDER BY date ASC, rowid ASC"
+        )
 
     def handle_remove_shares(self, row: tuple) -> None:
         """
