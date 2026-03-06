@@ -62,7 +62,6 @@ def test_process_data__attribution_single_account(database_attribution_single_ac
     assert len(orphan_rows) == 0, f"No orphan withdrawal rows expected, got: {orphan_rows}"
 
 
-@pytest.mark.xfail(reason="Internal transfers do not carry original FIFO month attribution — transferred capital creates orphan withdrawal rows")
 def test_process_data__attribution_two_accounts(database_attribution_two_accounts):
     """
     Two accounts: gain should be attributed to the original deposit month,
