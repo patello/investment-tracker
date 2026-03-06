@@ -9,7 +9,7 @@ from datetime import date, datetime
 from functools import reduce
 from database_handler import DatabaseHandler
 
-logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(level=logging.INFO)
 
 class AssetDeficit(Exception):
     """
@@ -123,8 +123,6 @@ class SpecialCases:
                 row = self.special_cases[i][1](row)
         return row
 
-# TODO: The DataParser does not check which account the transaction is made from, consider implementing this
-
 class DataParser:
     """
     DataParser class handles the processing of transactions in the database.
@@ -136,6 +134,7 @@ class DataParser:
         special_cases (SpecialCases): SpecialCases object that handles special rules when adding data to the database.
         """
         self.listing_change = {"to_asset":None,"to_asset_amount":None,"to_rowid":None}
+        self.pending_transfer = {"rowid": None, "account": None, "amount": None, "date": None}
         self.db = db
         self.special_cases = special_cases
         # Two cursors are used, one for handling writing processed lines and one responsible for keeping track of unprocessed lines
@@ -285,18 +284,22 @@ class DataParser:
         day = calendar.monthrange(year,month)[1]
         return date(year,month,day)
 
-    def available_capital(self) -> list:
+    def available_capital(self, account: str) -> list:
         """
-        Get available capital for each recorded month. If there is no recorded month, return (None,0).
+        Get available capital for a specific account.
+        Returns list of (month, capital) tuples ordered oldest first.
+
+        Parameters:
+        account (str): Account name to get capital for.
 
         Returns:
-        list: List of tuples with the first element being the month and the second element being the available capital for that month.
+        list: List of (month, capital) tuples with capital > 0 for that account.
         """
-        res = self.data_cur.execute("SELECT month, capital FROM month_data WHERE capital > 0 ORDER BY month ASC").fetchall()
-        if len(res) > 0:
-            return res
-        else:
-            return [(None,0)]
+        res = self.data_cur.execute(
+            "SELECT month, capital FROM month_data WHERE account = ? AND capital > 0 ORDER BY month ASC",
+            (account,)
+        ).fetchall()
+        return res if res else [(None, 0)]
 
     def available_asset(self, asset_id: int) -> list:
         """
@@ -323,7 +326,9 @@ class DataParser:
         """
         month = self.allocate_to_month(row[0])
         amount = row[6]
-        self.data_cur.execute("UPDATE month_data SET capital = capital + ?, deposit = deposit + ? WHERE month = ?",(amount,amount,month))
+        account = row[1]
+        self.data_cur.execute("INSERT OR IGNORE INTO month_data(month, account) VALUES(?,?)", (month, account))
+        self.data_cur.execute("UPDATE month_data SET capital = capital + ?, deposit = deposit + ? WHERE month = ? AND account = ?", (amount, amount, month, account))
         # Reset transaction_cur since new funds are available
         self.transaction_cur.execute("UPDATE transactions SET processed = 1 WHERE rowid = ?",(row[-1],))
         self.transaction_cur.execute("SELECT *,rowid FROM transactions WHERE processed == 0 ORDER BY date ASC, rowid ASC")
@@ -332,20 +337,22 @@ class DataParser:
         """
         Takes a transaction row and subtracts the amount from the capital of the oldest month(s) with available capital.
         If there is not enough total capital available, the transaction is not processed.
+        In per-account mode, only uses capital from the same account.
 
         Parameters:
         row (tuple): A row from the transactions table in the database.
         """
         total_amount = -row[6]
         remaining_amount = total_amount
-        month_capital = self.available_capital()
+        account = row[1]
+        month_capital = self.available_capital(account)
         total_capital = sum(e[1] for e in month_capital)
         if total_capital + 1e-4 >= total_amount:
             i = 0
             while remaining_amount > 1e-4:
                 (oldest_available,capital) = month_capital[i]
                 month_amount = min(remaining_amount,capital)
-                self.data_cur.execute("UPDATE month_data SET capital = capital - ?, withdrawal = withdrawal + ? WHERE month = ?",(month_amount,month_amount,oldest_available))
+                self.data_cur.execute("UPDATE month_data SET capital = capital - ?, withdrawal = withdrawal + ? WHERE month = ? AND account = ?", (month_amount, month_amount, oldest_available, account))
                 remaining_amount -= month_amount
                 i += 1
             self.transaction_cur.execute("UPDATE transactions SET processed = 1 WHERE rowid = ?",(row[-1],))
@@ -356,18 +363,20 @@ class DataParser:
         Takes a transaction row and subtracts the purchase amount from the capital of the oldest month(s) with available capital.
         Then allocates a proportional amount of the asset to those months.
         If there is not enough total capital available, the transaction is not processed.
+        In per-account mode, only uses capital from the same account.
 
         Parameters:
         row (tuple): A row from the transactions table in the database.
         """
         asset = row[3]
+        account = row[1]
         self.data_cur.execute("INSERT OR IGNORE INTO assets (asset) VALUES (?) ",(asset,))
         asset_id = self.data_cur.execute("SELECT asset_id FROM assets WHERE asset = ?",(asset,)).fetchone()[0]
         asset_amount = row[4]
         price = row[5]
         total_amount = -row[6]
         remaining_amount = total_amount
-        month_capital = self.available_capital()
+        month_capital = self.available_capital(account)
         total_capital = sum(e[1] for e in month_capital)
         if total_capital + 1e-3 >= total_amount:
             i = 0
@@ -375,7 +384,7 @@ class DataParser:
                 (oldest_available,capital) = month_capital[i]
                 month_amount = min(remaining_amount,capital)
                 month_asset_amount = month_amount / total_amount * asset_amount
-                self.data_cur.execute("UPDATE month_data SET capital = capital - ? WHERE month = ?",(month_amount,oldest_available))
+                self.data_cur.execute("UPDATE month_data SET capital = capital - ? WHERE month = ? AND account = ?", (month_amount, oldest_available, account))
                 self.data_cur.execute("INSERT OR IGNORE INTO month_assets(month,asset_id) VALUES (?,?)",(oldest_available,asset_id))
                 self.data_cur.execute("UPDATE month_assets SET average_price = ?/(amount+?)*?+amount/(amount+?)*average_price WHERE month = ? AND asset_id = ?",(month_amount,month_amount,price,month_amount,oldest_available,asset_id))
                 self.data_cur.execute("UPDATE month_assets SET average_purchase_price = ?/(purchased_amount+?)*?+purchased_amount/(purchased_amount+?)*average_purchase_price WHERE month = ? AND asset_id = ?",(month_amount,month_amount,price,month_amount,oldest_available,asset_id))
@@ -391,11 +400,13 @@ class DataParser:
         Takes a transaction row and subtracts the sale asset amount from the oldest month(s) with that available asset.
         Then adds the sale amount to the capital of those months.
         If there is not enough total assets available, the transaction is not processed.
+        In per-account mode, sale proceeds are returned to the selling account's capital for those months.
 
         Parameters:
         row (tuple): A row from the transactions table in the database.
         """
         asset = row[3]
+        account = row[1]
         self.data_cur.execute("INSERT OR IGNORE INTO assets (asset) VALUES (?) ",(asset,))
         asset_id = self.data_cur.execute("SELECT asset_id FROM assets WHERE asset = ?",(asset,)).fetchone()[0]
         asset_amount = -row[4]
@@ -412,7 +423,8 @@ class DataParser:
                 month_capital_amount = month_amount / asset_amount * total_amount
                 self.data_cur.execute("UPDATE month_assets SET average_sale_price = ?/(sold_amount+?)*?+sold_amount/(sold_amount+?)*average_sale_price WHERE month = ? AND asset_id = ?",(month_amount,month_amount,price,month_amount,oldest_available,asset_id))
                 self.data_cur.execute("UPDATE month_assets SET amount = amount - ?, sold_amount = sold_amount + ? WHERE month = ? AND asset_id = ?",(month_amount, month_amount, oldest_available,asset_id))
-                self.data_cur.execute("UPDATE month_data SET capital = capital + ? WHERE month = ?",(month_capital_amount,oldest_available))
+                self.data_cur.execute("INSERT OR IGNORE INTO month_data(month, account) VALUES(?,?)", (oldest_available, account))
+                self.data_cur.execute("UPDATE month_data SET capital = capital + ? WHERE month = ? AND account = ?", (month_capital_amount, oldest_available, account))
                 remaining_amount -= month_amount
                 i += 1
             # Reset transaction_cur since new funds are available
@@ -427,6 +439,7 @@ class DataParser:
         row (tuple): A row from the transactions table in the database.
         """
         dividend_month = self.allocate_to_month(row[0])
+        account = row[1]
         asset = row[3]
         result = self.data_cur.execute("SELECT asset_id FROM assets WHERE asset = ?",(asset,)).fetchone()
         if result is None:
@@ -437,31 +450,39 @@ class DataParser:
         dividend_per_asset = row[5]
         month_asset_amounts = self.available_asset(asset_id)
         for (month,asset_amount) in month_asset_amounts:
-                self.data_cur.execute("UPDATE month_data SET capital = capital + ? WHERE month = ?",(asset_amount*dividend_per_asset,month))
+                self.data_cur.execute("INSERT OR IGNORE INTO month_data(month, account) VALUES(?,?)", (month, account))
+                self.data_cur.execute("UPDATE month_data SET capital = capital + ? WHERE month = ? AND account = ?", (asset_amount*dividend_per_asset, month, account))
                 remaining_amount -= asset_amount
         if remaining_amount > 0:
-            self.data_cur.execute("UPDATE month_data SET capital = capital + ? WHERE month = ?",(remaining_amount*dividend_per_asset,dividend_month))
+            self.data_cur.execute("INSERT OR IGNORE INTO month_data(month, account) VALUES(?,?)", (dividend_month, account))
+            self.data_cur.execute("UPDATE month_data SET capital = capital + ? WHERE month = ? AND account = ?", (remaining_amount*dividend_per_asset, dividend_month, account))
         # Reset transaction_cur since new funds are available
         self.transaction_cur.execute("UPDATE transactions SET processed = 1 WHERE rowid = ?",(row[-1],))
         self.transaction_cur.execute("SELECT *,rowid FROM transactions WHERE processed == 0 ORDER BY date ASC, rowid ASC")
 
     def handle_interest(self, row: tuple) -> None:
         """
-        Takes a transaction row and adds the dividend amount proporionally to the capital of all the month(s) with that available capital.
+        Takes a transaction row and adds the interest amount proportionally to the capital of all month(s) with available capital.
+        In per-account mode, distributes only within the account's own capital, so savings account
+        interest stays attributed to savings account months (not leaked to investment account months).
 
         Parameters:
         row (tuple): A row from the transactions table in the database.
         """
         dividend_month = self.allocate_to_month(row[0])
+        account = row[1]
         remaining_amount = row[6]
-        month_capital = self.available_capital()
+        month_capital = self.available_capital(account)
         total_capital = sum([month[1] for month in month_capital])
-        dividend_per_capital = remaining_amount/total_capital
-        for (month,capital) in month_capital:
-                self.data_cur.execute("UPDATE month_data SET capital = capital + ? WHERE month = ?",(capital*dividend_per_capital,month))
-                remaining_amount -= capital*dividend_per_capital
+        dividend_per_capital = remaining_amount / total_capital
+        for (month, capital) in month_capital:
+            amount_added = capital * dividend_per_capital
+            self.data_cur.execute("INSERT OR IGNORE INTO month_data(month, account) VALUES(?,?)", (month, account))
+            self.data_cur.execute("UPDATE month_data SET capital = capital + ? WHERE month = ? AND account = ?", (amount_added, month, account))
+            remaining_amount -= amount_added
         if remaining_amount > 0:
-            self.data_cur.execute("UPDATE month_data SET capital = capital + ? WHERE month = ?",(remaining_amount,dividend_month))
+            self.data_cur.execute("INSERT OR IGNORE INTO month_data(month, account) VALUES(?,?)", (dividend_month, account))
+            self.data_cur.execute("UPDATE month_data SET capital = capital + ? WHERE month = ? AND account = ?", (remaining_amount, dividend_month, account))
         # Reset transaction_cur since new funds are available
         self.transaction_cur.execute("UPDATE transactions SET processed = 1 WHERE rowid = ?",(row[-1],))
         self.transaction_cur.execute("SELECT *,rowid FROM transactions WHERE processed == 0 ORDER BY date ASC, rowid ASC")
@@ -470,20 +491,22 @@ class DataParser:
         """
         Takes a transaction row and subtracts the fee amount from the capital of the oldest month(s) with available capital.
         If there is not enough total capital available, the transaction is not processed.
+        In per-account mode, only uses capital from the same account.
 
         Parameters:
         row (tuple): A row from the transactions table in the database.
         """
         total_amount = -row[6]
         remaining_amount = total_amount
-        month_capital = self.available_capital()
+        account = row[1]
+        month_capital = self.available_capital(account)
         total_capital = sum(e[1] for e in month_capital)
         if total_capital + 1e-4 >= total_amount:
             i = 0
             while remaining_amount > 1e-4:
                 (oldest_available,capital) = month_capital[i]
                 month_amount = min(remaining_amount,capital)
-                self.data_cur.execute("UPDATE month_data SET capital = capital - ? WHERE month = ?",(month_amount,oldest_available))
+                self.data_cur.execute("UPDATE month_data SET capital = capital - ? WHERE month = ? AND account = ?", (month_amount, oldest_available, account))
                 remaining_amount -= month_amount
                 i += 1
             self.transaction_cur.execute("UPDATE transactions SET processed = 1 WHERE rowid = ?",(row[-1],))
@@ -522,6 +545,7 @@ class DataParser:
         row (tuple): A row from the transactions table in the database.
         """
         month = self.allocate_to_month(row[0])
+        account = row[1]
         asset = row[3]
         amount = row[4]
         price = row[5]
@@ -530,10 +554,11 @@ class DataParser:
         self.data_cur.execute("INSERT OR IGNORE INTO month_assets(month,asset_id) VALUES (?,?)",(month,asset_id))
         # Update average price and average purchase price
         self.data_cur.execute("UPDATE month_assets SET average_price = (? * ? + amount * average_price) / (amount + ?) WHERE month = ? AND asset_id = ?", (amount, price, amount, month, asset_id))
-        self.data_cur.execute("UPDATE month_assets SET average_purchase_price = (? * ? + purchased_amount * average_purchase_price) / (purchased_amount + ?) WHERE month = ? AND asset_id = ?", (amount, price, amount, month, asset_id))# Update amount and purchased amount
+        self.data_cur.execute("UPDATE month_assets SET average_purchase_price = (? * ? + purchased_amount * average_purchase_price) / (purchased_amount + ?) WHERE month = ? AND asset_id = ?", (amount, price, amount, month, asset_id))
         # Update amount and purchased amount
         self.data_cur.execute("UPDATE month_assets SET amount = amount + ? WHERE month = ? AND asset_id = ?",(amount,month,asset_id))
-        self.data_cur.execute("UPDATE month_data SET deposit = deposit + ? WHERE month = ?",(amount*price,month))
+        self.data_cur.execute("INSERT OR IGNORE INTO month_data(month, account) VALUES(?,?)", (month, account))
+        self.data_cur.execute("UPDATE month_data SET deposit = deposit + ? WHERE month = ? AND account = ?", (amount*price, month, account))
         # Reset transaction_cur since new assets are available
         self.transaction_cur.execute("UPDATE transactions SET processed = 1 WHERE rowid = ?",(row[-1],))
         self.transaction_cur.execute("SELECT *,rowid FROM transactions WHERE processed == 0 ORDER BY date ASC, rowid ASC")
@@ -549,6 +574,98 @@ class DataParser:
         logging.debug(f"Ignoring transaction {row[0]} {row[2]} {row[3]} with amount {row[6]}")
         self.transaction_cur.execute("UPDATE transactions SET processed = 1 WHERE rowid = ?", (row[-1],))
         self.transaction_cur.execute("SELECT *,rowid FROM transactions WHERE processed == 0 ORDER BY date ASC, rowid ASC")
+
+    def handle_internal_transfer(self, row: tuple) -> None:
+        """
+        Handles 'Intern överföring' (internal transfer between accounts).
+        Processes transfers in pairs (OUT and IN) to preserve FIFO month attribution.
+
+        Parameters:
+        row (tuple): A row from the transactions table in the database.
+        """
+        if self.pending_transfer["rowid"] is None:
+            # First of pair
+            self.pending_transfer["rowid"] = row[-1]
+            self.pending_transfer["account"] = row[1]
+            self.pending_transfer["amount"] = row[6]
+            self.pending_transfer["date"] = row[0]
+            # Don't mark processed yet
+            return
+        
+        # Second of pair
+        first_rowid = self.pending_transfer["rowid"]
+        second_rowid = row[-1]
+        
+        # Determine OUT (-) and IN (+)
+        if self.pending_transfer["amount"] < 0:
+            out_account = self.pending_transfer["account"]
+            out_amount = -self.pending_transfer["amount"]
+            in_account = row[1]
+            in_amount = row[6]
+        else:
+            out_account = row[1]
+            out_amount = -row[6]
+            in_account = self.pending_transfer["account"]
+            in_amount = self.pending_transfer["amount"]
+        
+        # Get FIFO allocations from OUT account (following withdrawal pattern)
+        month_capital = self.available_capital(out_account)
+        total_capital = sum(e[1] for e in month_capital)
+        
+        if total_capital + 1e-4 >= out_amount:
+            allocations = []
+            remaining = out_amount
+            i = 0
+            
+            while remaining > 1e-4:
+                (oldest_available, capital) = month_capital[i]
+                month_amount = min(remaining, capital)
+                allocations.append((oldest_available, month_amount))
+                
+                # Remove from OUT account
+                self.data_cur.execute(
+                    "UPDATE month_data SET capital = capital - ? WHERE month = ? AND account = ?",
+                    (month_amount, oldest_available, out_account)
+                )
+                
+                remaining -= month_amount
+                i += 1
+            
+            # Add to IN account in same months
+            for oldest_available, amount in allocations:
+                self.data_cur.execute(
+                    "INSERT OR IGNORE INTO month_data(month, account) VALUES(?,?)",
+                    (oldest_available, in_account)
+                )
+                self.data_cur.execute(
+                    "UPDATE month_data SET capital = capital + ? WHERE month = ? AND account = ?",
+                    (amount, oldest_available, in_account)
+                )
+            
+            # Mark BOTH processed
+            self.transaction_cur.execute(
+                "UPDATE transactions SET processed = 1 WHERE rowid = ? OR rowid = ?",
+                (first_rowid, second_rowid)
+            )
+            logging.debug(f"Internal transfer pair processed: {out_amount} from {out_account} to {in_account}")
+        
+        else:
+            # Insufficient capital - defer the entire pair
+            logging.debug(
+                f"Internal transfer pair deferred: account {out_account} needs {out_amount}, has {total_capital}"
+            )
+            # Reset pending transfer so both transactions stay unprocessed
+            # They'll be retried later when capital becomes available
+            self.pending_transfer = {"rowid": None, "account": None, "amount": None, "date": None}
+            return
+        
+        # Reset pending transfer
+        self.pending_transfer = {"rowid": None, "account": None, "amount": None, "date": None}
+        
+        # Reset cursor since we marked transactions processed
+        self.transaction_cur.execute(
+            "SELECT *,rowid FROM transactions WHERE processed == 0 ORDER BY date ASC, rowid ASC"
+        )
 
     def handle_remove_shares(self, row: tuple) -> None:
         """
@@ -595,7 +712,6 @@ class DataParser:
         #Consider upgrading to python3.8 to make this more elegant with := statment
         while row is not None:
             month = self.allocate_to_month(row[0])
-            self.data_cur.execute("INSERT OR IGNORE INTO month_data(month) VALUES(?)",(month,))
             if row[2] == "Insättning":
                 self.handle_deposit(row)
             elif row[2] == "Uttag":
@@ -622,7 +738,7 @@ class DataParser:
             elif row[2] == "Tillgångsinsättning":
                 self.handle_asset_deposit(row)
             elif row[2] == "Intern överföring":
-                self.handle_ignore(row)
+                self.handle_internal_transfer(row)
             elif row[2] == "Värdepappersinsättning":
                 # Check if this is part of a "Byte" (change) transaction
                 # If amount is positive, it's adding shares (already handled by special cases converting to Tillgångsinsättning)
