@@ -90,10 +90,15 @@ def database_sales_validation(tmp_path):
     return DatabaseHandler(db_file)
 
 
+import pytest
+
+@pytest.mark.xfail(reason="Account column has been added to month_assets table - limitation fixed")
 def test_month_assets_missing_account_column(database_basic_two_accounts):
     """
     Test that month_assets table lacks 'account' column.
     This is the fundamental schema limitation.
+    
+    XFAIL: This limitation has been fixed - account column is now present.
     """
     db = database_basic_two_accounts
     db.connect()
