@@ -1,11 +1,11 @@
 """
-Test per-account asset tracking implementation.
+Test to demonstrate limitations of current per-account asset tracking.
 
-These tests verify:
-1. Assets are now tracked per account in month_assets table (with account column)
-2. Sales are validated - can only sell assets owned by the account
-3. Savings accounts no longer get attributed assets they never purchased
-4. Assets are correctly associated with the purchasing account
+These tests show:
+1. Assets are not tracked per account in month_assets table
+2. Sales can sell assets purchased by other accounts
+3. SavingsAccount gets attributed assets it never purchased
+4. summarize_accounts() uses proportional attribution instead of actual ownership
 """
 
 import pytest
@@ -90,10 +90,10 @@ def database_sales_validation(tmp_path):
     return DatabaseHandler(db_file)
 
 
-def test_month_assets_has_account_column(database_basic_two_accounts):
+def test_month_assets_missing_account_column(database_basic_two_accounts):
     """
-    Test that month_assets table now has 'account' column.
-    This is the fix for the fundamental schema limitation.
+    Test that month_assets table lacks 'account' column.
+    This is the fundamental schema limitation.
     """
     db = database_basic_two_accounts
     db.connect()
@@ -103,11 +103,11 @@ def test_month_assets_has_account_column(database_basic_two_accounts):
     cur.execute("PRAGMA table_info(month_assets)")
     columns = [row[1] for row in cur.fetchall()]
 
-    # month_assets should now have 'account' column (fix implemented)
-    assert 'account' in columns, "month_assets should have 'account' column (fix implemented)"
+    # month_assets should have 'account' column but doesn't
+    assert 'account' not in columns, "month_assets should lack 'account' column (current limitation)"
 
-    # Verify all expected columns exist
-    expected_columns = ['month', 'asset_id', 'account', 'amount', 'average_price',
+    # Verify the columns that do exist
+    expected_columns = ['month', 'asset_id', 'amount', 'average_price',
                        'average_purchase_price', 'average_sale_price',
                        'purchased_amount', 'sold_amount']
 
@@ -116,9 +116,9 @@ def test_month_assets_has_account_column(database_basic_two_accounts):
 
 
 
-def test_assets_tracked_per_account(database_basic_two_accounts):
+def test_assets_not_tracked_per_account(database_basic_two_accounts):
     """
-    Test that assets are now tracked per account in month_assets.
+    Test that assets are pooled by month, not tracked per account.
     """
     db = database_basic_two_accounts
     db.connect()
@@ -128,8 +128,8 @@ def test_assets_tracked_per_account(database_basic_two_accounts):
     parser = DataParser(db)
     parser.process_transactions()
 
-    # Check month_assets table - should now include account column
-    cur.execute("SELECT month, asset_id, account, amount FROM month_assets ORDER BY month, asset_id, account")
+    # Check month_assets table
+    cur.execute("SELECT month, asset_id, amount FROM month_assets ORDER BY month, asset_id")
     month_assets = cur.fetchall()
 
     # Get asset names for readability
@@ -137,30 +137,20 @@ def test_assets_tracked_per_account(database_basic_two_accounts):
     asset_map = {row[0]: row[1] for row in cur.fetchall()}
 
     # We have 2 assets purchased by different accounts
-    # Should now have 2 entries with account information
-    assert len(month_assets) == 2, "Should have 2 asset entries (one per asset per account)"
+    assert len(month_assets) == 2, "Should have 2 asset entries (one per asset)"
 
-    # Check that assets in month_assets now include account info
-    for month, asset_id, account, amount in month_assets:
+    # Check that assets are in month_assets but no account info
+    for month, asset_id, amount in month_assets:
         asset_name = asset_map[asset_id]
-        print(f"Asset in month_assets: {month}, {asset_name}, Account: {account}, {amount} shares")
-        # Now we can tell which account owns these shares!
+        print(f"Asset in month_assets: {month}, {asset_name}, {amount} shares")
+        # No way to tell which account owns these shares!
 
-    # Verify each asset is associated with the correct account
-    asset_accounts = {}
-    for month, asset_id, account, amount in month_assets:
-        asset_name = asset_map[asset_id]
-        asset_accounts[asset_name] = account
-    
-    # Asset A should be owned by account 1111
-    # Asset B should be owned by account 2222
-    assert asset_accounts.get('Asset A') == '1111', "Asset A should be owned by account 1111"
-    assert asset_accounts.get('Asset B') == '2222', "Asset B should be owned by account 2222"
+    # This demonstrates the limitation: assets in month_assets don't record account ownership
 
 
-def test_savings_account_no_asset_attribution(database_savings_account_scenario):
+def test_savings_account_attribution_bug(database_savings_account_scenario):
     """
-    Test that SavingsAccount does NOT get attributed assets it never purchased.
+    Test that SavingsAccount gets attributed assets it never purchased.
     """
     db = database_savings_account_scenario
     db.connect()
@@ -219,9 +209,9 @@ def test_savings_account_no_asset_attribution(database_savings_account_scenario)
 
 
 
-def test_sales_with_ownership_validation(database_sales_validation):
+def test_sales_without_ownership_validation(database_sales_validation):
     """
-    Test that accounts CANNOT sell assets they never purchased.
+    Test that accounts can sell assets they never purchased.
     """
     db = database_sales_validation
     db.connect()
@@ -354,12 +344,12 @@ if __name__ == "__main__":
         # Test 3: SavingsAccount bug
         print("\n3. Testing SavingsAccount attribution bug...")
         db = database_savings_account_scenario(tmp_path)
-        test_savings_account_no_asset_attribution(db)
+        test_savings_account_attribution_bug(db)
 
         # Test 4: Sales validation
         print("\n4. Testing sales without ownership validation...")
         db = database_sales_validation(tmp_path)
-        test_sales_with_ownership_validation(db)
+        test_sales_without_ownership_validation(db)
 
         # Test 5: Proportional attribution logic
         print("\n5. Demonstrating proportional attribution logic issue...")
