@@ -125,19 +125,21 @@ class DatabaseHandler:
                 PRIMARY KEY(asset_id)
                 );""")
 
-        # month_assets contains the amount of each asset held, purchased and sold each month
+        # month_assets contains the amount of each asset held, purchased and sold each month per account
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS month_assets(
                 month DATE NOT NULL,
                 asset_id INTEGER NOT NULL,
+                account TEXT NOT NULL,
                 amount REAL DEFAULT 0,
                 average_price REAL DEFAULT 0,
                 average_purchase_price REAL DEFAULT 0,
                 average_sale_price REAL DEFAULT 0,
                 purchased_amount REAL DEFAULT 0,
                 sold_amount REAL DEFAULT 0,
-                FOREIGN KEY (asset_id) REFERENCES assets (asset_id)
-                PRIMARY KEY(month, asset_id)
+                FOREIGN KEY (asset_id) REFERENCES assets (asset_id),
+                FOREIGN KEY (month, account) REFERENCES month_data (month, account),
+                PRIMARY KEY(month, asset_id, account)
                 );""")
         
         # metadata contains system state information

@@ -301,17 +301,22 @@ class DataParser:
         ).fetchall()
         return res if res else [(None, 0)]
 
-    def available_asset(self, asset_id: int) -> list:
+    def available_asset(self, asset_id: int, account: str = None) -> list:
         """
         Get available assets for each recorded month. If there is no recorded month, return (None,0).
-
+        
         Parameters:
         asset_id (int): The id of the asset to get available assets for.
+        account (str, optional): The account to filter by. If None, returns assets for all accounts.
 
         Returns:
         list: List of tuples with the first element being the month and the second element being the amount of available assets for that month.
         """
-        res = self.data_cur.execute("SELECT month, amount FROM month_assets WHERE amount > 0 AND asset_id = ? ORDER BY month ASC",(asset_id,)).fetchall()
+        if account:
+            res = self.data_cur.execute("SELECT month, amount FROM month_assets WHERE amount > 0 AND asset_id = ? AND account = ? ORDER BY month ASC",(asset_id, account)).fetchall()
+        else:
+            res = self.data_cur.execute("SELECT month, amount FROM month_assets WHERE amount > 0 AND asset_id = ? ORDER BY month ASC",(asset_id,)).fetchall()
+        
         if len(res) > 0:
             return res
         else:
@@ -385,10 +390,10 @@ class DataParser:
                 month_amount = min(remaining_amount,capital)
                 month_asset_amount = month_amount / total_amount * asset_amount
                 self.data_cur.execute("UPDATE month_data SET capital = capital - ? WHERE month = ? AND account = ?", (month_amount, oldest_available, account))
-                self.data_cur.execute("INSERT OR IGNORE INTO month_assets(month,asset_id) VALUES (?,?)",(oldest_available,asset_id))
-                self.data_cur.execute("UPDATE month_assets SET average_price = ?/(amount+?)*?+amount/(amount+?)*average_price WHERE month = ? AND asset_id = ?",(month_amount,month_amount,price,month_amount,oldest_available,asset_id))
-                self.data_cur.execute("UPDATE month_assets SET average_purchase_price = ?/(purchased_amount+?)*?+purchased_amount/(purchased_amount+?)*average_purchase_price WHERE month = ? AND asset_id = ?",(month_amount,month_amount,price,month_amount,oldest_available,asset_id))
-                self.data_cur.execute("UPDATE month_assets SET amount = amount + ?, purchased_amount = purchased_amount + ? WHERE month = ? AND asset_id = ?",(month_asset_amount, month_asset_amount, oldest_available,asset_id))
+                self.data_cur.execute("INSERT OR IGNORE INTO month_assets(month,asset_id,account) VALUES (?,?,?)",(oldest_available,asset_id,account))
+                self.data_cur.execute("UPDATE month_assets SET average_price = ?/(amount+?)*?+amount/(amount+?)*average_price WHERE month = ? AND asset_id = ? AND account = ?",(month_amount,month_amount,price,month_amount,oldest_available,asset_id,account))
+                self.data_cur.execute("UPDATE month_assets SET average_purchase_price = ?/(purchased_amount+?)*?+purchased_amount/(purchased_amount+?)*average_purchase_price WHERE month = ? AND asset_id = ? AND account = ?",(month_amount,month_amount,price,month_amount,oldest_available,asset_id,account))
+                self.data_cur.execute("UPDATE month_assets SET amount = amount + ?, purchased_amount = purchased_amount + ? WHERE month = ? AND asset_id = ? AND account = ?",(month_asset_amount, month_asset_amount, oldest_available,asset_id,account))
                 remaining_amount -= month_amount
                 i += 1
             # Reset transaction_cur since new assets are available
@@ -413,7 +418,7 @@ class DataParser:
         price = row[5]
         total_amount = row[6]
         remaining_amount = asset_amount
-        month_asset_amounts = self.available_asset(asset_id)
+        month_asset_amounts = self.available_asset(asset_id, account)
         total_asset_amount = sum(e[1] for e in month_asset_amounts)
         if total_asset_amount + 1e-3 >= asset_amount:
             i = 0
@@ -421,8 +426,8 @@ class DataParser:
                 (oldest_available,amount) = month_asset_amounts[i]
                 month_amount = min(remaining_amount,amount)
                 month_capital_amount = month_amount / asset_amount * total_amount
-                self.data_cur.execute("UPDATE month_assets SET average_sale_price = ?/(sold_amount+?)*?+sold_amount/(sold_amount+?)*average_sale_price WHERE month = ? AND asset_id = ?",(month_amount,month_amount,price,month_amount,oldest_available,asset_id))
-                self.data_cur.execute("UPDATE month_assets SET amount = amount - ?, sold_amount = sold_amount + ? WHERE month = ? AND asset_id = ?",(month_amount, month_amount, oldest_available,asset_id))
+                self.data_cur.execute("UPDATE month_assets SET average_sale_price = ?/(sold_amount+?)*?+sold_amount/(sold_amount+?)*average_sale_price WHERE month = ? AND asset_id = ? AND account = ?",(month_amount,month_amount,price,month_amount,oldest_available,asset_id,account))
+                self.data_cur.execute("UPDATE month_assets SET amount = amount - ?, sold_amount = sold_amount + ? WHERE month = ? AND asset_id = ? AND account = ?",(month_amount, month_amount, oldest_available,asset_id,account))
                 self.data_cur.execute("INSERT OR IGNORE INTO month_data(month, account) VALUES(?,?)", (oldest_available, account))
                 self.data_cur.execute("UPDATE month_data SET capital = capital + ? WHERE month = ? AND account = ?", (month_capital_amount, oldest_available, account))
                 remaining_amount -= month_amount
@@ -448,7 +453,7 @@ class DataParser:
         asset_id = result[0]
         remaining_amount = row[4]
         dividend_per_asset = row[5]
-        month_asset_amounts = self.available_asset(asset_id)
+        month_asset_amounts = self.available_asset(asset_id, account)
         for (month,asset_amount) in month_asset_amounts:
                 self.data_cur.execute("INSERT OR IGNORE INTO month_data(month, account) VALUES(?,?)", (month, account))
                 self.data_cur.execute("UPDATE month_data SET capital = capital + ? WHERE month = ? AND account = ?", (asset_amount*dividend_per_asset, month, account))
@@ -551,12 +556,12 @@ class DataParser:
         price = row[5]
         self.data_cur.execute("INSERT OR IGNORE INTO assets (asset) VALUES (?) ",(asset,))
         asset_id = self.data_cur.execute("SELECT asset_id FROM assets WHERE asset = ?",(asset,)).fetchone()[0]
-        self.data_cur.execute("INSERT OR IGNORE INTO month_assets(month,asset_id) VALUES (?,?)",(month,asset_id))
+        self.data_cur.execute("INSERT OR IGNORE INTO month_assets(month,asset_id,account) VALUES (?,?,?)",(month,asset_id,account))
         # Update average price and average purchase price
-        self.data_cur.execute("UPDATE month_assets SET average_price = (? * ? + amount * average_price) / (amount + ?) WHERE month = ? AND asset_id = ?", (amount, price, amount, month, asset_id))
-        self.data_cur.execute("UPDATE month_assets SET average_purchase_price = (? * ? + purchased_amount * average_purchase_price) / (purchased_amount + ?) WHERE month = ? AND asset_id = ?", (amount, price, amount, month, asset_id))
+        self.data_cur.execute("UPDATE month_assets SET average_price = (? * ? + amount * average_price) / (amount + ?) WHERE month = ? AND asset_id = ? AND account = ?", (amount, price, amount, month, asset_id, account))
+        self.data_cur.execute("UPDATE month_assets SET average_purchase_price = (? * ? + purchased_amount * average_purchase_price) / (purchased_amount + ?) WHERE month = ? AND asset_id = ? AND account = ?", (amount, price, amount, month, asset_id, account))
         # Update amount and purchased amount
-        self.data_cur.execute("UPDATE month_assets SET amount = amount + ? WHERE month = ? AND asset_id = ?",(amount,month,asset_id))
+        self.data_cur.execute("UPDATE month_assets SET amount = amount + ? WHERE month = ? AND asset_id = ? AND account = ?",(amount,month,asset_id,account))
         self.data_cur.execute("INSERT OR IGNORE INTO month_data(month, account) VALUES(?,?)", (month, account))
         self.data_cur.execute("UPDATE month_data SET deposit = deposit + ? WHERE month = ? AND account = ?", (amount*price, month, account))
         # Reset transaction_cur since new assets are available
@@ -676,11 +681,12 @@ class DataParser:
         row (tuple): A row from the transactions table in the database.
         """
         asset = row[3]
+        account = row[1]
         self.data_cur.execute("INSERT OR IGNORE INTO assets (asset) VALUES (?) ",(asset,))
         asset_id = self.data_cur.execute("SELECT asset_id FROM assets WHERE asset = ?",(asset,)).fetchone()[0]
         asset_amount = -row[4]  # Convert negative to positive
         remaining_amount = asset_amount
-        month_asset_amounts = self.available_asset(asset_id)
+        month_asset_amounts = self.available_asset(asset_id, account)
         total_asset_amount = sum(e[1] for e in month_asset_amounts)
         
         if total_asset_amount + 1e-3 >= asset_amount:
@@ -689,8 +695,8 @@ class DataParser:
                 (oldest_available, amount) = month_asset_amounts[i]
                 month_amount = min(remaining_amount, amount)
                 # Just remove shares, no capital change
-                self.data_cur.execute("UPDATE month_assets SET amount = amount - ? WHERE month = ? AND asset_id = ?",
-                                     (month_amount, oldest_available, asset_id))
+                self.data_cur.execute("UPDATE month_assets SET amount = amount - ? WHERE month = ? AND asset_id = ? AND account = ?",
+                                     (month_amount, oldest_available, asset_id, account))
                 remaining_amount -= month_amount
                 i += 1
             # Reset transaction_cur
