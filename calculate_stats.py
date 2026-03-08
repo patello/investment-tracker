@@ -511,12 +511,19 @@ class StatCalculator:
         Parameters:
         See get_accumulated
         """
+        # Extract period from kwargs for date formatting
+        period = kwargs.get('period', 'month')
         acc_stats = self.get_accumulated(**kwargs)
         print("Date, Deposit, Value, Gain/Loss")
         for (date_val, acc_net_deposit, acc_value, acc_gainloss) in acc_stats:
-            # Format date as year only for consistency
+            # Format date based on period
             if hasattr(date_val, 'year'):
-                display_date = date_val.year
+                if period == "year":
+                    # For year stats, show just the year
+                    display_date = date_val.year
+                else:
+                    # For month stats, show the full date
+                    display_date = date_val
             else:
                 display_date = date_val
             print("{date}: {deposit:.0f}, {value:.0f}, {gain_loss:.0f}".format(date= display_date,deposit=acc_net_deposit,value=acc_value,gain_loss=acc_gainloss))
@@ -528,13 +535,20 @@ class StatCalculator:
         Parameters:
         See get_stats
         """
+        # Extract period from kwargs for date formatting
+        period = kwargs.get('period', 'month')
         stats = self.get_stats(**kwargs)
         
         for (date_val, deposit, withdrawal, value, total_gainloss, realized_gainloss, unrealized_gainloss,total_gainloss_per, realized_gainloss_per, unrealized_gainloss_per, annual_per_yield) in stats:
             if deposit > 0:
-                # Format date as year only for consistency
+                # Format date based on period
                 if hasattr(date_val, 'year'):
-                    display_date = date_val.year
+                    if period == "year":
+                        # For year stats, show just the year
+                        display_date = date_val.year
+                    else:
+                        # For month stats, show the full date
+                        display_date = date_val
                 else:
                     display_date = date_val
                 print(display_date)
