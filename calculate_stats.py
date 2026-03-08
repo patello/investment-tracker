@@ -522,10 +522,20 @@ class StatCalculator:
                     # For year stats, show just the year
                     display_date = date_val.year
                 else:
-                    # For month stats, show the full date
-                    display_date = date_val
+                    # For month stats, show month name and year (e.g., "Jan 2026")
+                    display_date = date_val.strftime("%b %Y")
             else:
-                display_date = date_val
+                # Handle string dates if they occur
+                try:
+                    if period == "year":
+                        display_date = date_val[:4]  # Just the year
+                    else:
+                        # Parse and format as month year
+                        from datetime import datetime
+                        dt = datetime.strptime(date_val, "%Y-%m-%d")
+                        display_date = dt.strftime("%b %Y")
+                except:
+                    display_date = date_val
             print("{date}: {deposit:.0f}, {value:.0f}, {gain_loss:.0f}".format(date= display_date,deposit=acc_net_deposit,value=acc_value,gain_loss=acc_gainloss))
 
     def print_stats(self, **kwargs) -> None:
@@ -547,10 +557,20 @@ class StatCalculator:
                         # For year stats, show just the year
                         display_date = date_val.year
                     else:
-                        # For month stats, show the full date
-                        display_date = date_val
+                        # For month stats, show month name and year (e.g., "Jan 2026")
+                        display_date = date_val.strftime("%b %Y")
                 else:
-                    display_date = date_val
+                    # Handle string dates if they occur
+                    try:
+                        if period == "year":
+                            display_date = date_val[:4]  # Just the year
+                        else:
+                            # Parse and format as month year
+                            from datetime import datetime
+                            dt = datetime.strptime(date_val, "%Y-%m-%d")
+                            display_date = dt.strftime("%b %Y")
+                    except:
+                        display_date = date_val
                 print(display_date)
                 print("Deposited: {deposited:.0f}".format(deposited=deposit))
                 print("Value: {value:.0f}".format(value=value))
