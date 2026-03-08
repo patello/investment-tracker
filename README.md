@@ -48,6 +48,12 @@ python cli.py stats --update-prices auto --period year --deposits all
 
 # 3. Check system status anytime
 python cli.py status
+
+# 4. (Optional) Set default accounts for filtering
+python cli.py settings default-accounts "7485272,Sparkonto"
+
+# 5. View account summaries
+python cli.py accounts --update-prices auto
 ```
 
 ## Usage
@@ -87,6 +93,49 @@ The new `stats` command includes intelligent caching and update logic:
 - **Force update**: `--update-prices always` forces price refresh
 - **Skip update**: `--update-prices never` uses cached prices
 - **Stats caching**: Statistics are recalculated only when needed (new transactions or price updates)
+
+#### Account Filtering
+
+The CLI supports filtering statistics by account with the `--account` flag:
+
+```bash
+# Show stats for all accounts (default)
+python cli.py stats --account all
+
+# Show stats using default accounts set via settings
+python cli.py stats --account default
+
+# Show stats for specific accounts (comma-separated)
+python cli.py stats --account "7485272,Sparkonto"
+```
+
+Set default accounts for filtering:
+```bash
+# Set default accounts
+python cli.py settings default-accounts "7485272,Sparkonto"
+
+# Reset to include all accounts
+python cli.py settings default-accounts all
+```
+
+View account summaries with cash and asset values:
+```bash
+# Show all accounts
+python cli.py accounts --update-prices auto
+
+# Filter accounts (same syntax as stats command)
+python cli.py accounts --account default
+```
+
+Output format for `accounts` command:
+```
+Account                Cash (SEK) Assets (SEK)  Total (SEK)
+--------------------------------------------------------
+7485272                         0        58141        58141
+Sparkonto                   49316            0        49316
+--------------------------------------------------------
+TOTAL                       49316        58141       107457
+```
 
 ### Understanding Statistics Output
 
@@ -155,7 +204,23 @@ The unified CLI provides all functionality in a streamlined interface:
     - You might need to create a "special_cases.json" file in order to match and replace certain values in the data. See file specification in the documentation for the SpecialCases class.
 2. Import and process transactions: `python cli.py import data/your_transactions.csv`
 3. View statistics with automatic price updates: `python cli.py stats --update-prices auto`
-4. Check system status: `python cli.py status`
+4. (Optional) Set default accounts for filtering: `python cli.py settings default-accounts "7485272,Sparkonto"`
+5. View account summaries: `python cli.py accounts --update-prices auto`
+6. Check system status: `python cli.py status`
+
+**Advanced usage with account filtering:**
+```bash
+# Show stats for specific accounts
+python cli.py stats --account "7485272" --update-prices auto
+
+# Show accumulated stats for default accounts  
+python cli.py stats --account default --accumulated --update-prices auto
+
+# Compare different account combinations
+python cli.py accounts --account "7485272"
+python cli.py accounts --account "Sparkonto"
+python cli.py accounts --account all
+```
 
 ## Contributing
 
