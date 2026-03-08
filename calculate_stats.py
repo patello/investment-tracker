@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
 from database_handler import DatabaseHandler
 import requests
 import json
@@ -342,11 +342,15 @@ class StatCalculator:
                     unrealized_gainloss_per = 0
                     realized_gainloss_per = 0
                 
-                # For year stats, annual_per_yield is the same as total_gainloss_per
-                annual_per_yield = total_gainloss_per
+                # Calculate APY for year stats (same logic as calculate_year_stats())
+                middle_date = datetime(year=year, month=7, day=1).date()
+                if datetime.today().date() >= middle_date + timedelta(365.25) and total_gainloss_per != 0:
+                    annual_per_yield = 100 * ((total_gainloss_per / 100 + 1) ** (1 / ((datetime.today().date() - middle_date).days / 365.25)) - 1)
+                else:
+                    annual_per_yield = None
                 
                 stats.append((
-                    year, deposit, withdrawal, value,
+                    date(year, 1, 1), deposit, withdrawal, value,
                     total_gainloss, realized_gainloss, unrealized_gainloss,
                     total_gainloss_per, realized_gainloss_per, unrealized_gainloss_per,
                     annual_per_yield
@@ -357,168 +361,6 @@ class StatCalculator:
             stats = [row for row in stats if row[3] > 0]  # value > 0
         
         return stats
-        """
-        Get stats filtered by accounts. If accounts is None, returns stats for all accounts.
-        If accounts is a list, only include those accounts.
-        
-        Parameters:
-        accounts (list or None): List of account strings to include, or None for all.
-        period (str): "month" or "year".
-        deposits (str): "current" or "all".
-        
-        Returns:
-        list: List of stats in same format as get_stats().
-        """
-        self.db.connect()
-        cur = self.db.get_cursor()
-        today = datetime.today().date()
-        
-        # Build account filter clause
-        if accounts is None:
-            account_filter = ""
-            account_params = ()
-            asset_account_filter = ""
-            asset_account_params = ()
-        else:
-            placeholders = ",".join("?" * len(accounts))
-            account_filter = f" AND account IN ({placeholders})"
-            account_params = tuple(accounts)
-            asset_account_filter = f" AND account IN ({placeholders})"
-            asset_account_params = tuple(accounts)
-        
-        # Get month data filtered by accounts
-        month_data_query = f"""
-            SELECT month, SUM(deposit), SUM(withdrawal), SUM(capital)
-            FROM month_data
-            WHERE 1=1{account_filter}
-            GROUP BY month ORDER BY month ASC
-        """
-        month_data = cur.execute(month_data_query, account_params).fetchall()
-        
-        stats = []
-        acc_deposit = 0
-        acc_value = 0
-        acc_withdrawal = 0
-        acc_net_deposit = 0
-        acc_total_gainloss = 0
-        acc_realized_gainloss = 0
-        acc_unrealized_gainloss = 0
-        
-        for (month, deposit, withdrawal, capital) in month_data:
-            value = capital
-            
-            # Get assets for this month filtered by accounts
-            month_assets_query = f"""
-                SELECT asset_id, amount FROM month_assets
-                WHERE month = ? AND amount > 0.001{asset_account_filter}
-            """
-            params = (month,) + asset_account_params if asset_account_params else (month,)
-            month_assets = cur.execute(month_assets_query, params).fetchall()
-            
-            for (asset_id, amount) in month_assets:
-                (price,) = cur.execute("SELECT latest_price FROM assets WHERE asset_id = ?", (asset_id,)).fetchone()
-                if price is not None:
-                    value += amount * price
-            
-            total_gainloss = withdrawal + value - deposit
-            if (withdrawal + capital >= deposit) or (withdrawal + capital < deposit and value <= 0):
-                realized_gainloss = withdrawal + capital - deposit
-            else:
-                realized_gainloss = 0.0
-            unrealized_gainloss = total_gainloss - realized_gainloss
-            
-            if deposit > 0:
-                total_gainloss_per = 100 * total_gainloss / deposit
-                unrealized_gainloss_per = 100 * unrealized_gainloss / deposit
-                realized_gainloss_per = 100 * realized_gainloss / deposit
-            else:
-                total_gainloss_per = 0
-                unrealized_gainloss_per = 0
-                realized_gainloss_per = 0
-            
-            middle_date = month.replace(day=15)
-            if today >= middle_date + timedelta(365.25) and total_gainloss_per != 0:
-                annual_per_yield = 100 * ((total_gainloss_per / 100 + 1) ** (1 / ((datetime.today().date() - middle_date).days / 365.25)) - 1)
-            else:
-                annual_per_yield = None
-            
-            acc_deposit += deposit
-            acc_value += value
-            acc_withdrawal += withdrawal
-            net_deposit = deposit - withdrawal
-            if net_deposit > 0:
-                acc_net_deposit += net_deposit
-            acc_total_gainloss += total_gainloss
-            acc_realized_gainloss += realized_gainloss
-            acc_unrealized_gainloss += unrealized_gainloss
-            
-            stats.append((
-                month, deposit, withdrawal, value,
-                total_gainloss, realized_gainloss, unrealized_gainloss,
-                total_gainloss_per, realized_gainloss_per, unrealized_gainloss_per,
-                annual_per_yield
-            ))
-        
-        # If period is "year", aggregate monthly stats by year
-        if period == "year":
-            yearly_stats = {}
-            for row in stats:
-                month = row[0]
-                year = month.year if hasattr(month, 'year') else datetime.strptime(month, "%Y-%m-%d").year
-                if year not in yearly_stats:
-                    yearly_stats[year] = {
-                        'deposit': 0,
-                        'withdrawal': 0,
-                        'value': 0,
-                        'total_gainloss': 0,
-                        'realized_gainloss': 0,
-                        'unrealized_gainloss': 0,
-                        'months': 0
-                    }
-                yearly_stats[year]['deposit'] += row[1]
-                yearly_stats[year]['withdrawal'] += row[2]
-                yearly_stats[year]['value'] += row[3]
-                yearly_stats[year]['total_gainloss'] += row[4]
-                yearly_stats[year]['realized_gainloss'] += row[5]
-                yearly_stats[year]['unrealized_gainloss'] += row[6]
-                yearly_stats[year]['months'] += 1
-            
-            # Convert to list and calculate percentages
-            stats = []
-            for year in sorted(yearly_stats.keys()):
-                data = yearly_stats[year]
-                deposit = data['deposit']
-                withdrawal = data['withdrawal']
-                value = data['value']
-                total_gainloss = data['total_gainloss']
-                realized_gainloss = data['realized_gainloss']
-                unrealized_gainloss = data['unrealized_gainloss']
-                
-                if deposit > 0:
-                    total_gainloss_per = 100 * total_gainloss / deposit
-                    unrealized_gainloss_per = 100 * unrealized_gainloss / deposit
-                    realized_gainloss_per = 100 * realized_gainloss / deposit
-                else:
-                    total_gainloss_per = 0
-                    unrealized_gainloss_per = 0
-                    realized_gainloss_per = 0
-                
-                # For year stats, annual_per_yield is the same as total_gainloss_per
-                annual_per_yield = total_gainloss_per
-                
-                stats.append((
-                    year, deposit, withdrawal, value,
-                    total_gainloss, realized_gainloss, unrealized_gainloss,
-                    total_gainloss_per, realized_gainloss_per, unrealized_gainloss_per,
-                    annual_per_yield
-                ))
-        
-        # Filter by deposits parameter
-        if deposits == "current":
-            stats = [row for row in stats if row[4] > 0]  # value > 0
-        
-        return stats
-    
     def get_accumulated(self, accounts=None, period: str = "month", deposits: str = "current") -> list:
         """
         Get accumulated stats such as capital transfers and gain/loss for either months or years.
@@ -671,8 +513,13 @@ class StatCalculator:
         """
         acc_stats = self.get_accumulated(**kwargs)
         print("Date, Deposit, Value, Gain/Loss")
-        for (date, acc_net_deposit, acc_value, acc_gainloss) in acc_stats:
-            print("{date}: {deposit:.0f}, {value:.0f}, {gain_loss:.0f}".format(date= date,deposit=acc_net_deposit,value=acc_value,gain_loss=acc_gainloss))
+        for (date_val, acc_net_deposit, acc_value, acc_gainloss) in acc_stats:
+            # Format date as year only for consistency
+            if hasattr(date_val, 'year'):
+                display_date = date_val.year
+            else:
+                display_date = date_val
+            print("{date}: {deposit:.0f}, {value:.0f}, {gain_loss:.0f}".format(date= display_date,deposit=acc_net_deposit,value=acc_value,gain_loss=acc_gainloss))
 
     def print_stats(self, **kwargs) -> None:
         """
@@ -683,9 +530,14 @@ class StatCalculator:
         """
         stats = self.get_stats(**kwargs)
         
-        for (date, deposit, withdrawal, value, total_gainloss, realized_gainloss, unrealized_gainloss,total_gainloss_per, realized_gainloss_per, unrealized_gainloss_per, annual_per_yield) in stats:
+        for (date_val, deposit, withdrawal, value, total_gainloss, realized_gainloss, unrealized_gainloss,total_gainloss_per, realized_gainloss_per, unrealized_gainloss_per, annual_per_yield) in stats:
             if deposit > 0:
-                print(date)
+                # Format date as year only for consistency
+                if hasattr(date_val, 'year'):
+                    display_date = date_val.year
+                else:
+                    display_date = date_val
+                print(display_date)
                 print("Deposited: {deposited:.0f}".format(deposited=deposit))
                 print("Value: {value:.0f}".format(value=value))
                 print("Withdrawal: {withdrawal:.0f}".format(withdrawal=withdrawal))
