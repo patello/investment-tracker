@@ -529,87 +529,45 @@ class StatCalculator:
         Parameters:
         accounts (list or None): List of account strings to include, or None for all accounts.
             When None and period/deposits match cached table queries, uses pre-calculated stats for performance.
+            NOTE: Account filtering is not currently supported for accumulated stats due to algorithm complexity.
         period (str): "month" or "year".
         deposits (str): "current" or "all".
 
         Returns:
         list: List of accumulated stats.
         """
-        # If no account filtering requested and we can use cached tables, do so for performance
-        if accounts is None:
-            self.db.connect()
-            cur = self.db.get_cursor()
-            if period == "month" and deposits == "current":
-                acc_stats = cur.execute("""
-                    SELECT month, acc_net_deposit, acc_value, acc_unrealized_gainloss
-                    FROM month_stats WHERE value > 0 ORDER BY month ASC""").fetchall()
-            elif period == "month" and deposits == "all":
-                acc_stats = cur.execute("""
-                    SELECT month, acc_deposit, acc_value, acc_total_gainloss
-                    FROM month_stats ORDER BY month ASC""").fetchall()
-            elif period == "year" and deposits == "current":
-                acc_stats = cur.execute("""
-                    SELECT year, acc_net_deposit, acc_value, acc_unrealized_gainloss
-                    FROM year_stats WHERE value > 0 ORDER BY year ASC""").fetchall()
-            elif period == "year" and deposits == "all":
-                acc_stats = cur.execute("""
-                    SELECT year, acc_deposit, acc_value, acc_total_gainloss
-                    FROM year_stats ORDER BY year ASC""").fetchall()
-            else:
-                raise ValueError((period,deposits))
-            return acc_stats
+        # Account filtering is not currently supported for accumulated stats
+        # The accumulation algorithm in cached tables is complex and not yet replicated
+        # for filtered account subsets. Use --account all for accumulated stats.
+        if accounts is not None:
+            raise ValueError(
+                "Account filtering is not currently supported for accumulated stats. "
+                "The complex gain/loss accumulation algorithm has only been implemented "
+                "for global statistics (--account all). Use --account all for accumulated stats."
+            )
         
-        # Account filtering requested - compute stats fresh from get_stats
-        stats = self.get_stats(accounts=accounts, period=period, deposits=deposits)
-        
-        if deposits == "current":
-            # For "current" deposits, we accumulate net deposit, value, and unrealized gain/loss
-            acc_net_deposit = 0
-            acc_value = 0
-            acc_unrealized_gainloss = 0
-            accumulated = []
-            
-            for row in stats:
-                month = row[0]
-                deposit = row[1]
-                withdrawal = row[2]
-                value = row[3]
-                total_gainloss = row[4]
-                realized_gainloss = row[5]
-                unrealized_gainloss = row[6]
-                
-                net_deposit = deposit - withdrawal
-                if net_deposit > 0:
-                    acc_net_deposit += net_deposit
-                acc_value += value
-                acc_unrealized_gainloss += unrealized_gainloss
-                
-                accumulated.append((month, acc_net_deposit, acc_value, acc_unrealized_gainloss))
-            
-            return accumulated
+        # Use cached tables (global aggregates only)
+        self.db.connect()
+        cur = self.db.get_cursor()
+        if period == "month" and deposits == "current":
+            acc_stats = cur.execute("""
+                SELECT month, acc_net_deposit, acc_value, acc_unrealized_gainloss
+                FROM month_stats WHERE value > 0 ORDER BY month ASC""").fetchall()
+        elif period == "month" and deposits == "all":
+            acc_stats = cur.execute("""
+                SELECT month, acc_deposit, acc_value, acc_total_gainloss
+                FROM month_stats ORDER BY month ASC""").fetchall()
+        elif period == "year" and deposits == "current":
+            acc_stats = cur.execute("""
+                SELECT year, acc_net_deposit, acc_value, acc_unrealized_gainloss
+                FROM year_stats WHERE value > 0 ORDER BY year ASC""").fetchall()
+        elif period == "year" and deposits == "all":
+            acc_stats = cur.execute("""
+                SELECT year, acc_deposit, acc_value, acc_total_gainloss
+                FROM year_stats ORDER BY year ASC""").fetchall()
         else:
-            # For "all" deposits, we accumulate total deposit, value, and total gain/loss
-            acc_deposit = 0
-            acc_value = 0
-            acc_total_gainloss = 0
-            accumulated = []
-            
-            for row in stats:
-                month = row[0]
-                deposit = row[1]
-                withdrawal = row[2]
-                value = row[3]
-                total_gainloss = row[4]
-                realized_gainloss = row[5]
-                unrealized_gainloss = row[6]
-                
-                acc_deposit += deposit
-                acc_value += value
-                acc_total_gainloss += total_gainloss
-                
-                accumulated.append((month, acc_deposit, acc_value, acc_total_gainloss))
-            
-            return accumulated
+            raise ValueError((period,deposits))
+        return acc_stats
         """
         Get accumulated stats such as capital transfers and gain/loss for either months or years.
         "deposits" determine if only months/years with non-withdrawn capital are returned or all months/years.
