@@ -208,6 +208,233 @@ class StatCalculator:
         else:
             raise ValueError(period)
         return stats
+    
+    def get_stats_by_accounts(self, accounts=None, period: str = "month", deposits: str = "current") -> list:
+        """
+        Get stats filtered by accounts. If accounts is None, returns stats for all accounts.
+        If accounts is a list, only include those accounts.
+        
+        Parameters:
+        accounts (list or None): List of account strings to include, or None for all.
+        period (str): "month" or "year".
+        deposits (str): "current" or "all".
+        
+        Returns:
+        list: List of stats in same format as get_stats().
+        """
+        self.db.connect()
+        cur = self.db.get_cursor()
+        today = datetime.today().date()
+        
+        # Build account filter clause
+        if accounts is None:
+            account_filter = ""
+            account_params = ()
+            asset_account_filter = ""
+            asset_account_params = ()
+        else:
+            placeholders = ",".join("?" * len(accounts))
+            account_filter = f" AND account IN ({placeholders})"
+            account_params = tuple(accounts)
+            asset_account_filter = f" AND account IN ({placeholders})"
+            asset_account_params = tuple(accounts)
+        
+        # Get month data filtered by accounts
+        month_data_query = f"""
+            SELECT month, SUM(deposit), SUM(withdrawal), SUM(capital)
+            FROM month_data
+            WHERE 1=1{account_filter}
+            GROUP BY month ORDER BY month ASC
+        """
+        month_data = cur.execute(month_data_query, account_params).fetchall()
+        
+        stats = []
+        acc_deposit = 0
+        acc_value = 0
+        acc_withdrawal = 0
+        acc_net_deposit = 0
+        acc_total_gainloss = 0
+        acc_realized_gainloss = 0
+        acc_unrealized_gainloss = 0
+        
+        for (month, deposit, withdrawal, capital) in month_data:
+            value = capital
+            
+            # Get assets for this month filtered by accounts
+            month_assets_query = f"""
+                SELECT asset_id, amount FROM month_assets
+                WHERE month = ? AND amount > 0.001{asset_account_filter}
+            """
+            params = (month,) + asset_account_params if asset_account_params else (month,)
+            month_assets = cur.execute(month_assets_query, params).fetchall()
+            
+            for (asset_id, amount) in month_assets:
+                (price,) = cur.execute("SELECT latest_price FROM assets WHERE asset_id = ?", (asset_id,)).fetchone()
+                if price is not None:
+                    value += amount * price
+            
+            total_gainloss = withdrawal + value - deposit
+            if (withdrawal + capital >= deposit) or (withdrawal + capital < deposit and value <= 0):
+                realized_gainloss = withdrawal + capital - deposit
+            else:
+                realized_gainloss = 0.0
+            unrealized_gainloss = total_gainloss - realized_gainloss
+            
+            if deposit > 0:
+                total_gainloss_per = 100 * total_gainloss / deposit
+                unrealized_gainloss_per = 100 * unrealized_gainloss / deposit
+                realized_gainloss_per = 100 * realized_gainloss / deposit
+            else:
+                total_gainloss_per = 0
+                unrealized_gainloss_per = 0
+                realized_gainloss_per = 0
+            
+            middle_date = month.replace(day=15)
+            if today >= middle_date + timedelta(365.25) and total_gainloss_per != 0:
+                annual_per_yield = 100 * ((total_gainloss_per / 100 + 1) ** (1 / ((datetime.today().date() - middle_date).days / 365.25)) - 1)
+            else:
+                annual_per_yield = None
+            
+            acc_deposit += deposit
+            acc_value += value
+            acc_withdrawal += withdrawal
+            net_deposit = deposit - withdrawal
+            if net_deposit > 0:
+                acc_net_deposit += net_deposit
+            acc_total_gainloss += total_gainloss
+            acc_realized_gainloss += realized_gainloss
+            acc_unrealized_gainloss += unrealized_gainloss
+            
+            stats.append((
+                month, deposit, withdrawal, value,
+                total_gainloss, realized_gainloss, unrealized_gainloss,
+                total_gainloss_per, realized_gainloss_per, unrealized_gainloss_per,
+                annual_per_yield
+            ))
+        
+        # If period is "year", aggregate monthly stats by year
+        if period == "year":
+            yearly_stats = {}
+            for row in stats:
+                month = row[0]
+                year = month.year if hasattr(month, 'year') else datetime.strptime(month, "%Y-%m-%d").year
+                if year not in yearly_stats:
+                    yearly_stats[year] = {
+                        'deposit': 0,
+                        'withdrawal': 0,
+                        'value': 0,
+                        'total_gainloss': 0,
+                        'realized_gainloss': 0,
+                        'unrealized_gainloss': 0,
+                        'months': 0
+                    }
+                yearly_stats[year]['deposit'] += row[1]
+                yearly_stats[year]['withdrawal'] += row[2]
+                yearly_stats[year]['value'] += row[3]
+                yearly_stats[year]['total_gainloss'] += row[4]
+                yearly_stats[year]['realized_gainloss'] += row[5]
+                yearly_stats[year]['unrealized_gainloss'] += row[6]
+                yearly_stats[year]['months'] += 1
+            
+            # Convert to list and calculate percentages
+            stats = []
+            for year in sorted(yearly_stats.keys()):
+                data = yearly_stats[year]
+                deposit = data['deposit']
+                withdrawal = data['withdrawal']
+                value = data['value']
+                total_gainloss = data['total_gainloss']
+                realized_gainloss = data['realized_gainloss']
+                unrealized_gainloss = data['unrealized_gainloss']
+                
+                if deposit > 0:
+                    total_gainloss_per = 100 * total_gainloss / deposit
+                    unrealized_gainloss_per = 100 * unrealized_gainloss / deposit
+                    realized_gainloss_per = 100 * realized_gainloss / deposit
+                else:
+                    total_gainloss_per = 0
+                    unrealized_gainloss_per = 0
+                    realized_gainloss_per = 0
+                
+                # For year stats, annual_per_yield is the same as total_gainloss_per
+                annual_per_yield = total_gainloss_per
+                
+                stats.append((
+                    year, deposit, withdrawal, value,
+                    total_gainloss, realized_gainloss, unrealized_gainloss,
+                    total_gainloss_per, realized_gainloss_per, unrealized_gainloss_per,
+                    annual_per_yield
+                ))
+        
+        # Filter by deposits parameter
+        if deposits == "current":
+            stats = [row for row in stats if row[4] > 0]  # value > 0
+        
+        return stats
+    
+    def get_accumulated_by_accounts(self, accounts=None, period: str = "month", deposits: str = "current") -> list:
+        """
+        Get accumulated stats filtered by accounts.
+        
+        Parameters:
+        accounts (list or None): List of account strings to include, or None for all.
+        period (str): "month" or "year".
+        deposits (str): "current" or "all".
+        
+        Returns:
+        list: List of accumulated stats in same format as get_accumulated().
+        """
+        # Get regular stats filtered by accounts
+        stats = self.get_stats_by_accounts(accounts=accounts, period=period, deposits=deposits)
+        
+        if deposits == "current":
+            # For "current" deposits, we accumulate net deposit, value, and unrealized gain/loss
+            acc_net_deposit = 0
+            acc_value = 0
+            acc_unrealized_gainloss = 0
+            accumulated = []
+            
+            for row in stats:
+                month = row[0]
+                deposit = row[1]
+                withdrawal = row[2]
+                value = row[3]
+                total_gainloss = row[4]
+                realized_gainloss = row[5]
+                unrealized_gainloss = row[6]
+                
+                net_deposit = deposit - withdrawal
+                if net_deposit > 0:
+                    acc_net_deposit += net_deposit
+                acc_value += value
+                acc_unrealized_gainloss += unrealized_gainloss
+                
+                accumulated.append((month, acc_net_deposit, acc_value, acc_unrealized_gainloss))
+            
+            return accumulated
+        else:
+            # For "all" deposits, we accumulate total deposit, value, and total gain/loss
+            acc_deposit = 0
+            acc_value = 0
+            acc_total_gainloss = 0
+            accumulated = []
+            
+            for row in stats:
+                month = row[0]
+                deposit = row[1]
+                withdrawal = row[2]
+                value = row[3]
+                total_gainloss = row[4]
+                realized_gainloss = row[5]
+                unrealized_gainloss = row[6]
+                
+                acc_deposit += deposit
+                acc_value += value
+                acc_total_gainloss += total_gainloss
+                
+                accumulated.append((month, acc_deposit, acc_value, acc_total_gainloss))
+            
+            return accumulated
             
     def get_accumulated(self, period: str = "month", deposits: str = "current") -> list:
         """
@@ -311,7 +538,13 @@ class StatCalculator:
         Parameters:
         See get_accumulated
         """
-        acc_stats = self.get_accumulated(**kwargs)
+        # Handle account filtering
+        accounts = kwargs.pop('accounts', None)
+        if accounts is not None:
+            acc_stats = self.get_accumulated_by_accounts(accounts=accounts, **kwargs)
+        else:
+            acc_stats = self.get_accumulated(**kwargs)
+        
         print("Date, Deposit, Value, Gain/Loss")
         for (date, acc_net_deposit, acc_value, acc_gainloss) in acc_stats:
             print("{date}: {deposit:.0f}, {value:.0f}, {gain_loss:.0f}".format(date= date,deposit=acc_net_deposit,value=acc_value,gain_loss=acc_gainloss))
@@ -323,7 +556,13 @@ class StatCalculator:
         Parameters:
         See get_stats
         """
-        stats = self.get_stats(**kwargs)
+        # Handle account filtering
+        accounts = kwargs.pop('accounts', None)
+        if accounts is not None:
+            stats = self.get_stats_by_accounts(accounts=accounts, **kwargs)
+        else:
+            stats = self.get_stats(**kwargs)
+        
         for (date, deposit, withdrawal, value, total_gainloss, realized_gainloss, unrealized_gainloss,total_gainloss_per, realized_gainloss_per, unrealized_gainloss_per, annual_per_yield) in stats:
             if deposit > 0:
                 print(date)
@@ -336,6 +575,107 @@ class StatCalculator:
                 if annual_per_yield is not None:
                     print("APY: {apy:.1f}%".format(apy=annual_per_yield))
                 print("")
+
+    def get_account_summaries(self, accounts=None):
+        """
+        Get current account summaries including cash and asset values.
+        
+        Parameters:
+        accounts (list or None): List of account strings to include, or None for all.
+        
+        Returns:
+        list: List of tuples (account, cash, asset_value, total_value)
+        """
+        self.db.connect()
+        cur = self.db.get_cursor()
+        
+        # Build account filter clause
+        if accounts is None:
+            account_filter = ""
+            account_params = ()
+        else:
+            placeholders = ",".join("?" * len(accounts))
+            account_filter = f" WHERE account IN ({placeholders})"
+            account_params = tuple(accounts)
+        
+        # Get all accounts (filtered if specified)
+        accounts_query = f"""
+            SELECT DISTINCT account FROM month_data
+            {account_filter}
+            ORDER BY account
+        """
+        account_rows = cur.execute(accounts_query, account_params).fetchall()
+        if not account_rows:
+            return []
+        
+        summaries = []
+        
+        for (account,) in account_rows:
+            # Get cash balance for this account
+            cash_query = """
+                SELECT SUM(capital) FROM month_data 
+                WHERE account = ?
+            """
+            (cash,) = cur.execute(cash_query, (account,)).fetchone()
+            cash = cash or 0
+            
+            # Get asset holdings for this account
+            asset_query = """
+                SELECT ma.asset_id, ma.amount, a.latest_price
+                FROM month_assets ma
+                JOIN assets a ON ma.asset_id = a.asset_id
+                WHERE ma.account = ? AND ma.amount > 0.001
+                AND a.latest_price IS NOT NULL
+            """
+            asset_rows = cur.execute(asset_query, (account,)).fetchall()
+            
+            asset_value = 0
+            for asset_id, amount, price in asset_rows:
+                if price is not None:
+                    asset_value += amount * price
+            
+            total_value = cash + asset_value
+            summaries.append((account, cash, asset_value, total_value))
+        
+        return summaries
+    
+    def print_account_summary(self, accounts=None):
+        """
+        Print account summaries in table format.
+        
+        Parameters:
+        accounts (list or None): List of account strings to include, or None for all.
+        """
+        summaries = self.get_account_summaries(accounts)
+        
+        if not summaries:
+            print("No account data found")
+            return
+        
+        # Calculate totals
+        total_cash = sum(s[1] for s in summaries)
+        total_assets = sum(s[2] for s in summaries)
+        total_total = sum(s[3] for s in summaries)
+        
+        # Print table header
+        print(f"{'Account':<20} {'Cash (SEK)':>12} {'Assets (SEK)':>12} {'Total (SEK)':>12}")
+        print("-" * 56)
+        
+        # Print each account
+        for account, cash, asset_value, total_value in summaries:
+            print(f"{account:<20} {cash:>12.0f} {asset_value:>12.0f} {total_value:>12.0f}")
+        
+        # Print totals
+        print("-" * 56)
+        print(f"{'TOTAL':<20} {total_cash:>12.0f} {total_assets:>12.0f} {total_total:>12.0f}")
+        
+        # Print percentage breakdown if there are multiple accounts
+        if len(summaries) > 1:
+            print("\nPercentage of total portfolio:")
+            for account, cash, asset_value, total_value in summaries:
+                if total_total > 0:
+                    percentage = 100 * total_value / total_total
+                    print(f"  {account}: {percentage:.1f}%")
 
     def update_prices(self, force: bool = False):
         """

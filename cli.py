@@ -141,6 +141,23 @@ def stats(args):
     """Smart statistics command with automatic updates."""
     db = get_db(args)
     
+    # Parse account filter
+    account_arg = args.account.strip()
+    accounts = None
+    
+    if account_arg.lower() == 'all':
+        accounts = None  # None means all accounts
+    elif account_arg.lower() == 'default':
+        # Get default accounts from metadata
+        default_accounts_str = db.get_metadata('default_accounts')
+        if default_accounts_str is None or default_accounts_str == '':
+            accounts = None  # No default set, use all accounts
+        else:
+            accounts = [acc.strip() for acc in default_accounts_str.split(',')]
+    else:
+        # Comma-separated list of accounts
+        accounts = [acc.strip() for acc in account_arg.split(',')]
+    
     # Update prices if needed
     if args.update_prices == 'always':
         # Force price update
@@ -209,6 +226,10 @@ def stats(args):
     try:
         stat_calc = StatCalculator(db)
         kwargs = {'period': args.period, 'deposits': args.deposits}
+        
+        # Add account filter if specified
+        if accounts is not None:
+            kwargs['accounts'] = accounts
         
         if args.accumulated:
             stat_calc.print_accumulated(**kwargs)
@@ -282,6 +303,103 @@ def reset(args):
         return 1
 
 
+def settings_default_accounts(args):
+    """Set default accounts for filtering."""
+    db = get_db(args)
+    
+    accounts = args.accounts.strip()
+    if accounts.lower() == 'all':
+        # Store empty string to indicate all accounts
+        db.set_metadata('default_accounts', '')
+        logging.info("Default accounts set to 'all' (all accounts)")
+    else:
+        # Validate comma-separated list
+        account_list = [acc.strip() for acc in accounts.split(',')]
+        if not all(acc for acc in account_list):
+            logging.error("Invalid account list: empty account found")
+            return 1
+        
+        # Store as comma-separated string
+        db.set_metadata('default_accounts', ','.join(account_list))
+        logging.info(f"Default accounts set to: {', '.join(account_list)}")
+    
+    return 0
+
+
+def accounts_summary(args):
+    """Show account summaries with asset values and cash."""
+    db = get_db(args)
+    
+    # Parse account filter (same logic as stats)
+    account_arg = args.account.strip()
+    accounts = None
+    
+    if account_arg.lower() == 'all':
+        accounts = None  # None means all accounts
+    elif account_arg.lower() == 'default':
+        # Get default accounts from metadata
+        default_accounts_str = db.get_metadata('default_accounts')
+        if default_accounts_str is None or default_accounts_str == '':
+            accounts = None  # No default set, use all accounts
+        else:
+            accounts = [acc.strip() for acc in default_accounts_str.split(',')]
+    else:
+        # Comma-separated list of accounts
+        accounts = [acc.strip() for acc in account_arg.split(',')]
+    
+    # Update prices if needed (same logic as stats)
+    if args.update_prices == 'always':
+        # Force price update
+        fresh, oldest_date = prices_are_fresh(db)
+        if fresh:
+            logging.info(f"Prices are already fresh (oldest: {oldest_date}), updating anyway...")
+        try:
+            stat_calc = StatCalculator(db)
+            stat_calc.update_prices(force=True)
+            
+            # Update metadata
+            now = datetime.now().isoformat()
+            db.set_metadata('last_price_update', now)
+            
+            logging.info("Prices updated successfully")
+        except Exception as e:
+            logging.error(f"Failed to update prices: {e}")
+            return 1
+            
+    elif args.update_prices == 'auto':
+        fresh, oldest_date = prices_are_fresh(db)
+        need_prices = any_assets_need_prices(db)
+        
+        if not fresh or need_prices:
+            if need_prices:
+                logging.info("Some assets have no prices, updating...")
+            else:
+                logging.info(f"Prices are stale (oldest: {oldest_date}), updating...")
+            
+            try:
+                stat_calc = StatCalculator(db)
+                stat_calc.update_prices(force=True)
+                
+                # Update metadata
+                now = datetime.now().isoformat()
+                db.set_metadata('last_price_update', now)
+                
+                logging.info("Prices updated successfully")
+            except Exception as e:
+                logging.error(f"Failed to update prices: {e}")
+                return 1
+    
+    # Display account summary
+    try:
+        stat_calc = StatCalculator(db)
+        stat_calc.print_account_summary(accounts=accounts)
+        return 0
+        
+    except Exception as e:
+        logging.error(f"Failed to show account summary: {e}")
+        return 1
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Avanza investment tracker CLI",
@@ -342,7 +460,36 @@ Examples:
         action='store_true',
         help='Force statistics recalculation'
     )
+    stats_parser.add_argument(
+        '--account',
+        default='all',
+        help='Accounts to include: "default", "all", or comma-separated list of accounts'
+    )
     stats_parser.set_defaults(func=stats)
+    
+    # Settings command
+    settings_parser = subparsers.add_parser('settings', help='Manage settings')
+    settings_subparsers = settings_parser.add_subparsers(dest='settings_command', help='Settings command')
+    
+    # Default accounts subcommand
+    default_accounts_parser = settings_subparsers.add_parser('default-accounts', help='Set default accounts')
+    default_accounts_parser.add_argument('accounts', help='Comma-separated list of account numbers, or "all" for all accounts')
+    default_accounts_parser.set_defaults(func=settings_default_accounts)
+    
+    # Accounts command (show account summaries)
+    accounts_parser = subparsers.add_parser('accounts', help='Show account summaries with asset values and cash')
+    accounts_parser.add_argument(
+        '--account',
+        default='all',
+        help='Accounts to include: "default", "all", or comma-separated list of accounts'
+    )
+    accounts_parser.add_argument(
+        '--update-prices',
+        choices=['auto', 'always', 'never'],
+        default='auto',
+        help='When to update prices (default: auto)'
+    )
+    accounts_parser.set_defaults(func=accounts_summary)
     
     # Status command
     status_parser = subparsers.add_parser('status', help='Show system status')
