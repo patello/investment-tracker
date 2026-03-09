@@ -283,29 +283,29 @@ def test_proportional_attribution_logic():
     Test the mathematical logic of proportional attribution.
     Demonstrates why SUM(capital) is correct for cash calculation.
     """
-    # Example: Sparkonto has capital in multiple months
-    # Jan 2024: 13,086
-    # Apr 2024: 31,219  
-    # Jan 2026: 5,011
-    # Total: 49,316
+    # Example: SavingsAccount has capital in multiple months
+    # Jan 2024: 1,000
+    # Apr 2024: 2,000  
+    # Jan 2026: 3,000
+    # Total: 6,000
     
-    sparkonto_capital = {
-        '2024-01': 13086,
-        '2024-04': 31219,
-        '2026-01': 5011
+    savings_account_capital = {
+        '2024-01': 1000,
+        '2024-04': 2000,
+        '2026-01': 3000
     }
     
-    total_cash = sum(sparkonto_capital.values())
-    assert total_cash == 49316, f"Total cash should be 49,316, got {total_cash}"
+    total_cash = sum(savings_account_capital.values())
+    assert total_cash == 6000, f"Total cash should be 6,000, got {total_cash}"
     
     # Demonstrates that looking for "latest non-zero capital" gives wrong answer
-    latest_month = max(sparkonto_capital.keys())
-    latest_capital = sparkonto_capital[latest_month]
+    latest_month = max(savings_account_capital.keys())
+    latest_capital = savings_account_capital[latest_month]
     
     print(f"Latest month ({latest_month}) capital: {latest_capital}")
     print(f"Total capital (sum across months): {total_cash}")
     print(f"Error if using latest only: {total_cash - latest_capital} SEK missing")
     
-    assert latest_capital == 5011, "Latest capital should be 5,011"
+    assert latest_capital == 3000, "Latest capital should be 3,000"
     assert total_cash > latest_capital, "Total should be greater than latest month only"
-    assert total_cash - latest_capital == 44305, "Should be missing 44,305 SEK if using latest only"
+    assert total_cash - latest_capital == 3000, "Should be missing 3,000 SEK if using latest only"
