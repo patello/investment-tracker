@@ -264,9 +264,57 @@ class StatCalculator:
             years = [row[0] for row in cur.fetchall()]
             
             for year_str in years:
-                # Get last month of each year
+                # Sum cohort deposits, withdrawals, and cash capital for the entire year
                 cur.execute("""
-                    SELECT * FROM account_month_stats
+                    SELECT SUM(deposit), SUM(withdrawal), SUM(capital)
+                    FROM month_data
+                    WHERE account = ? AND strftime('%Y', month) = ?
+                """, (account, year_str))
+                dep_row = cur.fetchone()
+                deposit = dep_row[0] or 0.0
+                withdrawal = dep_row[1] or 0.0
+                capital = dep_row[2] or 0.0
+                
+                # Sum cohort asset holdings for the entire year
+                cur.execute("""
+                    SELECT ma.asset_id, SUM(ma.amount), a.latest_price
+                    FROM month_assets ma
+                    JOIN assets a ON ma.asset_id = a.asset_id
+                    WHERE ma.account = ? AND strftime('%Y', ma.month) = ? AND ma.amount > 0.001
+                    AND a.latest_price IS NOT NULL
+                    GROUP BY ma.asset_id
+                """, (account, year_str))
+                
+                asset_value = 0.0
+                for asset_id, amount, price in cur.fetchall():
+                    asset_value += amount * price
+                    
+                value = capital + asset_value
+                
+                # Calculate gain/loss
+                total_gainloss = withdrawal + value - deposit
+                
+                if (withdrawal + capital >= deposit) or (withdrawal + capital < deposit and value <= 0):
+                    realized_gainloss = withdrawal + capital - deposit
+                else:
+                    realized_gainloss = 0.0
+                    
+                unrealized_gainloss = total_gainloss - realized_gainloss
+                
+                # Calculate percentages
+                if deposit > 0:
+                    total_gainloss_per = 100 * total_gainloss / deposit
+                    realized_gainloss_per = 100 * realized_gainloss / deposit
+                    unrealized_gainloss_per = 100 * unrealized_gainloss / deposit
+                else:
+                    total_gainloss_per = 0.0
+                    realized_gainloss_per = 0.0
+                    unrealized_gainloss_per = 0.0
+                    
+                # Get last month of the year for accumulated values
+                cur.execute("""
+                    SELECT acc_net_deposit, acc_deposit, acc_value, acc_unrealized_gainloss, acc_total_gainloss
+                    FROM account_month_stats
                     WHERE account = ? AND strftime('%Y', month) = ?
                     ORDER BY month DESC
                     LIMIT 1
@@ -276,9 +324,8 @@ class StatCalculator:
                 if last_month:
                     year_date = f"{year_str}-01-01"
                     
-                    # Calculate APY for yearly stats (same logic as original)
+                    # Calculate APY for yearly stats
                     middle_date = datetime(year=int(year_str), month=7, day=1).date()
-                    total_gainloss_per = last_month[8]  # total_gainloss_per column
                     
                     if today >= middle_date + timedelta(days=365.25) and total_gainloss_per != 0:
                         annual_per_yield = 100 * ((total_gainloss_per/100 + 1) ** (1 / ((today - middle_date).days / 365.25)) - 1)
@@ -295,11 +342,11 @@ class StatCalculator:
                             acc_unrealized_gainloss, acc_total_gainloss
                         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """, (
-                        account, year_date, last_month[2], last_month[3],  # deposit, withdrawal
-                        last_month[4], last_month[5], last_month[6],  # value, total_gainloss, realized_gainloss
-                        last_month[7], last_month[8], last_month[9],  # unrealized_gainloss, total_gainloss_per, realized_gainloss_per
-                        last_month[10], annual_per_yield, last_month[12],  # unrealized_gainloss_per, annual_per_yield, acc_net_deposit
-                        last_month[13], last_month[14], last_month[15], last_month[16]  # acc_deposit, acc_value, acc_unrealized_gainloss, acc_total_gainloss
+                        account, year_date, deposit, withdrawal, value,
+                        total_gainloss, realized_gainloss, unrealized_gainloss,
+                        total_gainloss_per, realized_gainloss_per, unrealized_gainloss_per,
+                        annual_per_yield, last_month[0], last_month[1], last_month[2],
+                        last_month[3], last_month[4]
                     ))
         
         self.db.commit()
