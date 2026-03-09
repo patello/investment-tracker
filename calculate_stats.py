@@ -304,6 +304,7 @@ class StatCalculator:
         
         self.db.commit()
         logging.info(f"Yearly stats calculated for {len(accounts)} accounts")
+        
     def calculate_stats(self):
         """
         Calculate monthly and yearly stats such as capital transfers and gain/loss.
@@ -506,13 +507,14 @@ class StatCalculator:
             stats = [row for row in stats if row[3] > 0]  # value > 0
         
         return stats
+
     def get_accumulated(self, accounts=None, period: str = "month", deposits: str = "current") -> list:
         """
         Get accumulated stats such as capital transfers and gain/loss for either months or years.
         "deposits" determine if only months/years with non-withdrawn capital are returned or all months/years.
         
         Accumulated stats are returned as a list in the following order:
-        month, acc_net_deposit, acc_value, acc_unrealized_gainloss
+        month, deposit, value, gainloss
         """
         self._ensure_per_account_tables()
         self.db.connect()
@@ -524,19 +526,22 @@ class StatCalculator:
                 "SELECT DISTINCT account FROM account_month_stats ORDER BY account"
             ).fetchall()]
         
+        deposit_col = "acc_deposit" if deposits == "all" else "acc_net_deposit"
+        gainloss_col = "acc_total_gainloss" if deposits == "all" else "(acc_value - acc_net_deposit)"
+        
         # Single account - direct query from cached tables
         if len(accounts) == 1:
             account = accounts[0]
             if period == "month":
-                query = """
-                    SELECT month, acc_net_deposit, acc_value, acc_unrealized_gainloss
+                query = f"""
+                    SELECT month, {deposit_col}, acc_value, {gainloss_col}
                     FROM account_month_stats
                     WHERE account = ?
                     ORDER BY month
                 """
             else:  # year
-                query = """
-                    SELECT year, acc_net_deposit, acc_value, acc_unrealized_gainloss
+                query = f"""
+                    SELECT year, {deposit_col}, acc_value, {gainloss_col}
                     FROM account_year_stats
                     WHERE account = ?
                     ORDER BY year
@@ -554,43 +559,53 @@ class StatCalculator:
             
             return stats
         
-        # Multiple accounts - merge from cached tables
+        # Multiple accounts - python-side forward filling logic to preserve totals
         placeholders = ",".join("?" * len(accounts))
         
         if period == "month":
             query = f"""
-                SELECT month,
-                       SUM(acc_net_deposit) as acc_net_deposit,
-                       SUM(acc_value) as acc_value,
-                       SUM(acc_unrealized_gainloss) as acc_unrealized_gainloss
+                SELECT month, account, {deposit_col}, acc_value, {gainloss_col}
                 FROM account_month_stats
                 WHERE account IN ({placeholders})
-                GROUP BY month
                 ORDER BY month
             """
         else:  # year
             query = f"""
-                SELECT year,
-                       SUM(acc_net_deposit) as acc_net_deposit,
-                       SUM(acc_value) as acc_value,
-                       SUM(acc_unrealized_gainloss) as acc_unrealized_gainloss
+                SELECT year, account, {deposit_col}, acc_value, {gainloss_col}
                 FROM account_year_stats
                 WHERE account IN ({placeholders})
-                GROUP BY year
                 ORDER BY year
             """
         
         cur.execute(query, accounts)
         rows = cur.fetchall()
         
-        # Filter by deposits parameter
-        stats = []
+        from collections import defaultdict
+        time_grouped = defaultdict(list)
+        
         for row in rows:
-            if deposits == "current" and row[2] <= 0:  # acc_value <= 0
+            time_grouped[row[0]].append(row)
+        
+        # Track the latest accumulated value state per account to fill gaps
+        latest_states = {acc: (0.0, 0.0, 0.0) for acc in accounts}
+        stats = []
+        
+        for time_val in sorted(time_grouped.keys()):
+            for row in time_grouped[time_val]:
+                acc = row[1]
+                latest_states[acc] = (row[2], row[3], row[4])
+                
+            total_deposit = sum(state[0] for state in latest_states.values())
+            total_value = sum(state[1] for state in latest_states.values())
+            total_gainloss = sum(state[2] for state in latest_states.values())
+            
+            if deposits == "current" and total_value <= 0:
                 continue
-            stats.append(tuple(row))
+                
+            stats.append((time_val, total_deposit, total_value, total_gainloss))
         
         return stats
+
     def get_accumulated_stacked(self, **kwargs) -> tuple:
         """
         Gets deposits and gain/loss accumulated over time for use when stacked in a graph. 
