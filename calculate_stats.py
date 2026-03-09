@@ -83,6 +83,9 @@ class StatCalculator:
         """)
         
         self.db.commit()
+        # Update the cached tables list in the database handler
+        if 'account_month_stats' not in self.db.tables:
+            self.db.tables.extend(['account_month_stats', 'account_year_stats'])
         logging.info("Created per-account statistics tables (dropped old global tables)")
     
     def _drop_old_tables(self):
