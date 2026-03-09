@@ -186,14 +186,24 @@ class StatCalculator:
                     realized_gainloss_per = 0.0
                     unrealized_gainloss_per = 0.0
                 
-                # Calculate APY (same logic as original)
+                # Calculate APY using Simple Dietz Method
                 if isinstance(month_str, str):
                     month_date = datetime.strptime(month_str, "%Y-%m-%d").date()
                 else:
                     month_date = month_str  # already a date object
                 middle_date = month_date.replace(day=15)
-                if today >= middle_date + timedelta(days=365.25) and total_gainloss_per != 0:
-                    annual_per_yield = 100 * ((total_gainloss_per/100 + 1) ** (1 / ((today - middle_date).days / 365.25)) - 1)
+                
+                v0 = deposit
+                c = -withdrawal
+                hpr_denominator = v0 + (c / 2)
+                
+                if today >= middle_date + timedelta(days=365.25) and hpr_denominator > 0:
+                    hpr = total_gainloss / hpr_denominator
+                    years_elapsed = (today - middle_date).days / 365.25
+                    if (1 + hpr) >= 0:
+                        annual_per_yield = 100 * ((1 + hpr) ** (1 / years_elapsed) - 1)
+                    else:
+                        annual_per_yield = None
                 else:
                     annual_per_yield = None
                 
@@ -324,11 +334,20 @@ class StatCalculator:
                 if last_month:
                     year_date = f"{year_str}-01-01"
                     
-                    # Calculate APY for yearly stats
+                    # Calculate APY for yearly stats using Simple Dietz Method
                     middle_date = datetime(year=int(year_str), month=7, day=1).date()
                     
-                    if today >= middle_date + timedelta(days=365.25) and total_gainloss_per != 0:
-                        annual_per_yield = 100 * ((total_gainloss_per/100 + 1) ** (1 / ((today - middle_date).days / 365.25)) - 1)
+                    v0 = deposit
+                    c = -withdrawal
+                    hpr_denominator = v0 + (c / 2)
+                    
+                    if today >= middle_date + timedelta(days=365.25) and hpr_denominator > 0:
+                        hpr = total_gainloss / hpr_denominator
+                        years_elapsed = (today - middle_date).days / 365.25
+                        if (1 + hpr) >= 0:
+                            annual_per_yield = 100 * ((1 + hpr) ** (1 / years_elapsed) - 1)
+                        else:
+                            annual_per_yield = None
                     else:
                         annual_per_yield = None
                     
@@ -468,15 +487,25 @@ class StatCalculator:
                     realized_gainloss_per = 0.0
                     unrealized_gainloss_per = 0.0
                 
-                # Calculate APY
+                # Calculate APY using Simple Dietz Method
                 if isinstance(month, str):
                     month_date = datetime.strptime(month, "%Y-%m-%d").date()
                 else:
                     month_date = month
                 
                 middle_date = month_date.replace(day=15)
-                if today >= middle_date + timedelta(days=365.25) and total_gainloss_per != 0:
-                    annual_per_yield = 100 * ((total_gainloss_per/100 + 1) ** (1 / ((today - middle_date).days / 365.25)) - 1)
+                
+                v0 = deposit
+                c = -withdrawal
+                hpr_denominator = v0 + (c / 2)
+                
+                if today >= middle_date + timedelta(days=365.25) and hpr_denominator > 0:
+                    hpr = total_gainloss / hpr_denominator
+                    years_elapsed = (today - middle_date).days / 365.25
+                    if (1 + hpr) >= 0:
+                        annual_per_yield = 100 * ((1 + hpr) ** (1 / years_elapsed) - 1)
+                    else:
+                        annual_per_yield = None
                 else:
                     annual_per_yield = None
                 
@@ -535,10 +564,20 @@ class StatCalculator:
                     realized_gainloss_per = 0.0
                     unrealized_gainloss_per = 0.0
                 
-                # Calculate APY for year stats
+                # Calculate APY for year stats using Simple Dietz Method
                 middle_date = datetime(year=year, month=7, day=1).date()
-                if today >= middle_date + timedelta(days=365.25) and total_gainloss_per != 0:
-                    annual_per_yield = 100 * ((total_gainloss_per/100 + 1) ** (1 / ((today - middle_date).days / 365.25)) - 1)
+                
+                v0 = deposit
+                c = -withdrawal
+                hpr_denominator = v0 + (c / 2)
+                
+                if today >= middle_date + timedelta(days=365.25) and hpr_denominator > 0:
+                    hpr = total_gainloss / hpr_denominator
+                    years_elapsed = (today - middle_date).days / 365.25
+                    if (1 + hpr) >= 0:
+                        annual_per_yield = 100 * ((1 + hpr) ** (1 / years_elapsed) - 1)
+                    else:
+                        annual_per_yield = None
                 else:
                     annual_per_yield = None
                 
