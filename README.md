@@ -20,6 +20,7 @@ This project is a work in progress and will be updated as I go along.
 
 - Parse and store data from an investment platform.
 - Keep track of where money invested each month is moved and grown over time.
+- **Per-account statistics**: Calculate gains/losses for each account separately, then merge for combined views
 - Calculate statistics for months and years:
     - Deposit
     - Withdrawal
@@ -31,6 +32,7 @@ This project is a work in progress and will be updated as I go along.
 - Two viewing modes:
     - **Period-specific**: Track performance of investments made in each month/year
     - **Accumulated**: See total portfolio value over time with assets carried forward
+- **Account filtering**: View statistics for any combination of accounts with full accumulated history support
 
 ## Installation
 
@@ -50,7 +52,7 @@ python cli.py stats --update-prices auto --period year --deposits all
 python cli.py status
 
 # 4. (Optional) Set default accounts for filtering
-python cli.py settings default-accounts "ACCOUNT_NUMBER_1,SAVINGS_ACCOUNT"
+python cli.py settings default-accounts "account1,savings_account"
 
 # 5. View account summaries
 python cli.py accounts --update-prices auto
@@ -96,7 +98,7 @@ The new `stats` command includes intelligent caching and update logic:
 
 #### Account Filtering
 
-The CLI supports filtering statistics by account with the `--account` flag:
+The CLI supports filtering statistics by account with the `--account` flag. Statistics are calculated per-account for accuracy, then merged when viewing multiple accounts:
 
 ```bash
 # Show stats for all accounts (default)
@@ -106,13 +108,16 @@ python cli.py stats --account all
 python cli.py stats --account default
 
 # Show stats for specific accounts (comma-separated)
-python cli.py stats --account "ACCOUNT_NUMBER_1,SAVINGS_ACCOUNT"
+python cli.py stats --account "account1,savings_account"
+
+# Accumulated statistics now work with any account combination
+python cli.py stats --account "account1" --accumulated
 ```
 
 Set default accounts for filtering:
 ```bash
 # Set default accounts
-python cli.py settings default-accounts "ACCOUNT_NUMBER_1,SAVINGS_ACCOUNT"
+python cli.py settings default-accounts "account1,savings_account"
 
 # Reset to include all accounts
 python cli.py settings default-accounts all
@@ -131,10 +136,10 @@ Output format for `accounts` command:
 ```
 Account                Cash (SEK) Assets (SEK)  Total (SEK)
 --------------------------------------------------------
-ACCOUNT_NUMBER_1                         0        58141        58141
-SAVINGS_ACCOUNT                   49316            0        49316
+account1                        0       100000       100000
+savings_account             50000            0        50000
 --------------------------------------------------------
-TOTAL                       49316        58141       107457
+TOTAL                       50000       100000       150000
 ```
 
 ### Understanding Statistics Output
@@ -204,21 +209,22 @@ The unified CLI provides all functionality in a streamlined interface:
     - You might need to create a "special_cases.json" file in order to match and replace certain values in the data. See file specification in the documentation for the SpecialCases class.
 2. Import and process transactions: `python cli.py import data/your_transactions.csv`
 3. View statistics with automatic price updates: `python cli.py stats --update-prices auto`
-4. (Optional) Set default accounts for filtering: `python cli.py settings default-accounts "ACCOUNT_NUMBER_1,SAVINGS_ACCOUNT"`
+4. (Optional) Set default accounts for filtering: `python cli.py settings default-accounts "account1,savings_account"`
 5. View account summaries: `python cli.py accounts --update-prices auto`
 6. Check system status: `python cli.py status`
 
 **Advanced usage with account filtering:**
 ```bash
 # Show stats for specific accounts
-python cli.py stats --account "ACCOUNT_NUMBER_1" --update-prices auto
+python cli.py stats --account "account1" --update-prices auto
 
-# Show accumulated stats for default accounts  
-python cli.py stats --account default --accumulated --update-prices auto
+# Show accumulated stats for any account combination
+python cli.py stats --account "account1" --accumulated --update-prices auto
+python cli.py stats --account "account1,savings_account" --accumulated --update-prices auto
 
 # Compare different account combinations
-python cli.py accounts --account "ACCOUNT_NUMBER_1"
-python cli.py accounts --account "SAVINGS_ACCOUNT"
+python cli.py accounts --account "account1"
+python cli.py accounts --account "savings_account"
 python cli.py accounts --account all
 ```
 
