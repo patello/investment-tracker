@@ -762,38 +762,30 @@ class StatCalculator:
                 "SELECT DISTINCT account FROM month_data ORDER BY account"
             ).fetchall()]
         
-        placeholders = ",".join("?" * len(accounts))
-        
-        # Get latest month for each account
-        query = f"""
-            SELECT ma.account, ma.month, 
-                   SUM(ma.amount * a.latest_price) as asset_value,
-                   md.capital as cash
-            FROM month_assets ma
-            JOIN assets a ON ma.asset_id = a.asset_id
-            JOIN month_data md ON ma.account = md.account AND ma.month = md.month
-            WHERE ma.account IN ({placeholders}) AND ma.amount > 0.001
-            AND a.latest_price IS NOT NULL
-            GROUP BY ma.account, ma.month
-            HAVING ma.month = (
-                SELECT MAX(month) FROM month_assets WHERE account = ma.account
-            )
-            ORDER BY ma.account
-        """
-        
-        cur.execute(query, accounts)
-        rows = cur.fetchall()
-        
         summaries = []
-        for row in rows:
-            account = row[0]
-            asset_value = row[2] or 0.0
-            cash = row[3] or 0.0
-            total = asset_value + cash
+        for account in accounts:
+            # Get TOTAL cash balance for this account across ALL months (cohorts)
+            cur.execute("SELECT SUM(capital) FROM month_data WHERE account = ?", (account,))
+            cash_row = cur.fetchone()
+            cash = cash_row[0] if cash_row and cash_row[0] else 0.0
             
+            # Get TOTAL asset holdings for this account across ALL months (cohorts)
+            cur.execute("""
+                SELECT SUM(ma.amount * a.latest_price)
+                FROM month_assets ma
+                JOIN assets a ON ma.asset_id = a.asset_id
+                WHERE ma.account = ? AND ma.amount > 0.001
+                AND a.latest_price IS NOT NULL
+            """, (account,))
+            
+            asset_row = cur.fetchone()
+            asset_value = asset_row[0] if asset_row and asset_row[0] else 0.0
+                
+            total = asset_value + cash
             summaries.append((account, cash, asset_value, total))
-        
+            
         return summaries
+
     def print_account_summary(self, accounts=None):
         """
         Print account summaries in table format.
