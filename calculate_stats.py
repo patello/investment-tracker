@@ -83,7 +83,7 @@ class StatCalculator:
         """)
         
         self.db.commit()
-        # Update the cached tables list in the database handler
+        # Ensure updated table state exists locally to prevent KeyError exceptions
         if 'account_month_stats' not in self.db.tables:
             self.db.tables.extend(['account_month_stats', 'account_year_stats'])
         logging.info("Created per-account statistics tables (dropped old global tables)")
@@ -189,22 +189,58 @@ class StatCalculator:
                     realized_gainloss_per = 0.0
                     unrealized_gainloss_per = 0.0
                 
-                # Calculate APY using Simple Dietz Method
+                # Calculate APY using Modified Dietz Method via cohort_cash_flows
                 if isinstance(month_str, str):
                     month_date = datetime.strptime(month_str, "%Y-%m-%d").date()
                 else:
-                    month_date = month_str  # already a date object
-                middle_date = month_date.replace(day=15)
+                    month_date = month_str
+
+                # Defines the start date for chronological weighting
+                start_date = month_date.replace(day=15)
                 
-                v0 = deposit
-                c = -withdrawal
-                hpr_denominator = v0 + (c / 2)
+                cur.execute("""
+                    SELECT transaction_month, amount
+                    FROM cohort_cash_flows
+                    WHERE cohort_month = ? AND account = ?
+                """, (month_str, account))
+                cash_flows = cur.fetchall()
                 
-                if today >= middle_date + timedelta(days=365.25) and hpr_denominator > 0:
-                    hpr = total_gainloss / hpr_denominator
-                    years_elapsed = (today - middle_date).days / 365.25
-                    if (1 + hpr) >= 0:
-                        annual_per_yield = 100 * ((1 + hpr) ** (1 / years_elapsed) - 1)
+                parsed_cfs = []
+                for cf_month_val, cf_amount in cash_flows:
+                    if isinstance(cf_month_val, str):
+                        cf_date = datetime.strptime(cf_month_val, "%Y-%m-%d").date()
+                    else:
+                        cf_date = cf_month_val
+                    parsed_cfs.append((cf_date, cf_amount))
+                
+                if value <= 0.001 and parsed_cfs:
+                    end_date = max(cf[0] for cf in parsed_cfs)
+                    # Force a positive duration threshold
+                    if end_date <= start_date:
+                        end_date = start_date + timedelta(days=1)
+                else:
+                    end_date = today
+                
+                total_days = (end_date - start_date).days
+                
+                if total_days > 0:
+                    sum_w_cf = 0.0
+                    for cf_date, cf_amount in parsed_cfs:
+                        days_elapsed = (cf_date - start_date).days
+                        # Limit bounds to strictly reflect weight during active period
+                        days_elapsed = max(0, min(days_elapsed, total_days))
+                        weight = (total_days - days_elapsed) / total_days
+                        sum_w_cf += weight * cf_amount
+                    
+                    hpr_denominator = deposit + sum_w_cf
+                    
+                    if hpr_denominator > 0:
+                        hpr = total_gainloss / hpr_denominator
+                        years_elapsed = total_days / 365.25
+                        if (1 + hpr) >= 0 and years_elapsed > 0:
+                            annual_per_yield = 100 * ((1 + hpr) ** (1 / years_elapsed) - 1)
+                        else:
+                            annual_per_yield = None
                     else:
                         annual_per_yield = None
                 else:
@@ -337,18 +373,50 @@ class StatCalculator:
                 if last_month:
                     year_date = f"{year_str}-01-01"
                     
-                    # Calculate APY for yearly stats using Simple Dietz Method
-                    middle_date = datetime(year=int(year_str), month=7, day=1).date()
+                    # Calculate APY for yearly stats using Modified Dietz via cohort_cash_flows
+                    start_date = datetime(year=int(year_str), month=7, day=1).date()
                     
-                    v0 = deposit
-                    c = -withdrawal
-                    hpr_denominator = v0 + (c / 2)
+                    cur.execute("""
+                        SELECT transaction_month, amount
+                        FROM cohort_cash_flows
+                        WHERE strftime('%Y', cohort_month) = ? AND account = ?
+                    """, (year_str, account))
+                    cash_flows = cur.fetchall()
                     
-                    if today >= middle_date + timedelta(days=365.25) and hpr_denominator > 0:
-                        hpr = total_gainloss / hpr_denominator
-                        years_elapsed = (today - middle_date).days / 365.25
-                        if (1 + hpr) >= 0:
-                            annual_per_yield = 100 * ((1 + hpr) ** (1 / years_elapsed) - 1)
+                    parsed_cfs = []
+                    for cf_month_val, cf_amount in cash_flows:
+                        if isinstance(cf_month_val, str):
+                            cf_date = datetime.strptime(cf_month_val, "%Y-%m-%d").date()
+                        else:
+                            cf_date = cf_month_val
+                        parsed_cfs.append((cf_date, cf_amount))
+                    
+                    if value <= 0.001 and parsed_cfs:
+                        end_date = max(cf[0] for cf in parsed_cfs)
+                        if end_date <= start_date:
+                            end_date = start_date + timedelta(days=1)
+                    else:
+                        end_date = today
+                    
+                    total_days = (end_date - start_date).days
+                    
+                    if total_days > 0:
+                        sum_w_cf = 0.0
+                        for cf_date, cf_amount in parsed_cfs:
+                            days_elapsed = (cf_date - start_date).days
+                            days_elapsed = max(0, min(days_elapsed, total_days))
+                            weight = (total_days - days_elapsed) / total_days
+                            sum_w_cf += weight * cf_amount
+                        
+                        hpr_denominator = deposit + sum_w_cf
+                        
+                        if hpr_denominator > 0:
+                            hpr = total_gainloss / hpr_denominator
+                            years_elapsed = total_days / 365.25
+                            if (1 + hpr) >= 0 and years_elapsed > 0:
+                                annual_per_yield = 100 * ((1 + hpr) ** (1 / years_elapsed) - 1)
+                            else:
+                                annual_per_yield = None
                         else:
                             annual_per_yield = None
                     else:
@@ -490,23 +558,55 @@ class StatCalculator:
                     realized_gainloss_per = 0.0
                     unrealized_gainloss_per = 0.0
                 
-                # Calculate APY using Simple Dietz Method
+                # Calculate APY using Modified Dietz via cohort_cash_flows for combined accounts
                 if isinstance(month, str):
                     month_date = datetime.strptime(month, "%Y-%m-%d").date()
                 else:
                     month_date = month
                 
-                middle_date = month_date.replace(day=15)
+                start_date = month_date.replace(day=15)
                 
-                v0 = deposit
-                c = -withdrawal
-                hpr_denominator = v0 + (c / 2)
+                cur.execute(f"""
+                    SELECT transaction_month, amount
+                    FROM cohort_cash_flows
+                    WHERE cohort_month = ? AND account IN ({placeholders})
+                """, (month,) + tuple(accounts))
+                cash_flows = cur.fetchall()
                 
-                if today >= middle_date + timedelta(days=365.25) and hpr_denominator > 0:
-                    hpr = total_gainloss / hpr_denominator
-                    years_elapsed = (today - middle_date).days / 365.25
-                    if (1 + hpr) >= 0:
-                        annual_per_yield = 100 * ((1 + hpr) ** (1 / years_elapsed) - 1)
+                parsed_cfs = []
+                for cf_month_val, cf_amount in cash_flows:
+                    if isinstance(cf_month_val, str):
+                        cf_date = datetime.strptime(cf_month_val, "%Y-%m-%d").date()
+                    else:
+                        cf_date = cf_month_val
+                    parsed_cfs.append((cf_date, cf_amount))
+                
+                if value <= 0.001 and parsed_cfs:
+                    end_date = max(cf[0] for cf in parsed_cfs)
+                    if end_date <= start_date:
+                        end_date = start_date + timedelta(days=1)
+                else:
+                    end_date = today
+                    
+                total_days = (end_date - start_date).days
+                
+                if total_days > 0:
+                    sum_w_cf = 0.0
+                    for cf_date, cf_amount in parsed_cfs:
+                        days_elapsed = (cf_date - start_date).days
+                        days_elapsed = max(0, min(days_elapsed, total_days))
+                        weight = (total_days - days_elapsed) / total_days
+                        sum_w_cf += weight * cf_amount
+                    
+                    hpr_denominator = deposit + sum_w_cf
+                    
+                    if hpr_denominator > 0:
+                        hpr = total_gainloss / hpr_denominator
+                        years_elapsed = total_days / 365.25
+                        if (1 + hpr) >= 0 and years_elapsed > 0:
+                            annual_per_yield = 100 * ((1 + hpr) ** (1 / years_elapsed) - 1)
+                        else:
+                            annual_per_yield = None
                     else:
                         annual_per_yield = None
                 else:
@@ -567,18 +667,50 @@ class StatCalculator:
                     realized_gainloss_per = 0.0
                     unrealized_gainloss_per = 0.0
                 
-                # Calculate APY for year stats using Simple Dietz Method
-                middle_date = datetime(year=year, month=7, day=1).date()
+                # Calculate APY for year stats using Modified Dietz via cohort_cash_flows for combined accounts
+                start_date = datetime(year=year, month=7, day=1).date()
                 
-                v0 = deposit
-                c = -withdrawal
-                hpr_denominator = v0 + (c / 2)
+                cur.execute(f"""
+                    SELECT transaction_month, amount
+                    FROM cohort_cash_flows
+                    WHERE strftime('%Y', cohort_month) = ? AND account IN ({placeholders})
+                """, (year_str,) + tuple(accounts))
+                cash_flows = cur.fetchall()
                 
-                if today >= middle_date + timedelta(days=365.25) and hpr_denominator > 0:
-                    hpr = total_gainloss / hpr_denominator
-                    years_elapsed = (today - middle_date).days / 365.25
-                    if (1 + hpr) >= 0:
-                        annual_per_yield = 100 * ((1 + hpr) ** (1 / years_elapsed) - 1)
+                parsed_cfs = []
+                for cf_month_val, cf_amount in cash_flows:
+                    if isinstance(cf_month_val, str):
+                        cf_date = datetime.strptime(cf_month_val, "%Y-%m-%d").date()
+                    else:
+                        cf_date = cf_month_val
+                    parsed_cfs.append((cf_date, cf_amount))
+                
+                if value <= 0.001 and parsed_cfs:
+                    end_date = max(cf[0] for cf in parsed_cfs)
+                    if end_date <= start_date:
+                        end_date = start_date + timedelta(days=1)
+                else:
+                    end_date = today
+                    
+                total_days = (end_date - start_date).days
+                
+                if total_days > 0:
+                    sum_w_cf = 0.0
+                    for cf_date, cf_amount in parsed_cfs:
+                        days_elapsed = (cf_date - start_date).days
+                        days_elapsed = max(0, min(days_elapsed, total_days))
+                        weight = (total_days - days_elapsed) / total_days
+                        sum_w_cf += weight * cf_amount
+                    
+                    hpr_denominator = deposit + sum_w_cf
+                    
+                    if hpr_denominator > 0:
+                        hpr = total_gainloss / hpr_denominator
+                        years_elapsed = total_days / 365.25
+                        if (1 + hpr) >= 0 and years_elapsed > 0:
+                            annual_per_yield = 100 * ((1 + hpr) ** (1 / years_elapsed) - 1)
+                        else:
+                            annual_per_yield = None
                     else:
                         annual_per_yield = None
                 else:
