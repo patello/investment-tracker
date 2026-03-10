@@ -108,6 +108,19 @@ class DatabaseHandler:
                 capital REAL DEFAULT 0,
                 PRIMARY KEY(month, account)
                 );""")
+                
+        # cohort_cash_flows tracks aggregated cash flows for a cohort in a specific transaction month.
+        # NOTE: Accumulating cash flows on a monthly basis is mathematically suboptimal for the Modified Dietz 
+        # calculation and could be improved with further accuracy by logging exact transaction dates.
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS cohort_cash_flows(
+                cohort_month DATE NOT NULL,
+                account TEXT NOT NULL,
+                transaction_month DATE NOT NULL,
+                amount REAL DEFAULT 0,
+                FOREIGN KEY (cohort_month, account) REFERENCES month_data (month, account),
+                PRIMARY KEY (cohort_month, account, transaction_month)
+            );""")
 
         # assets contains the total amount of each asset and the latest price
         cursor.execute("""
@@ -383,4 +396,3 @@ if __name__ == "__main__":
         print(stat, stats[stat])
 
     db_handler.disconnect()
-
