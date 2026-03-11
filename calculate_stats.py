@@ -389,31 +389,22 @@ class StatCalculator:
                 if last_month:
                     year_date = f"{year_str}-01-01"
                     
-                    # Calculate APY by aggregating per-cohort Modified Dietz HPRs
-                    # Each monthly cohort gets its own HPR, then we capital-weight them
+                    # Calculate APY for yearly stats using Modified Dietz via cohort_cash_flows
+                    start_date = datetime(year=int(year_str), month=7, day=1).date()
+                    
                     cur.execute("""
-                        SELECT month, deposit, withdrawal, value,
-                               total_gainloss, annual_per_yield
-                        FROM account_month_stats
-                        WHERE account = ? AND strftime('%Y', month) = ?
-                        ORDER BY month
-                    """, (account, year_str))
-                    month_stats = cur.fetchall()
+                        SELECT transaction_month, amount
+                        FROM cohort_cash_flows
+                        WHERE strftime('%Y', cohort_month) = ? AND account = ?
+                    """, (year_str, account))
+                    parsed_cfs = [
+                        (datetime.strptime(r[0], "%Y-%m-%d").date() if isinstance(r[0], str) else r[0], r[1])
+                        for r in cur.fetchall()
+                    ]
                     
-                    # Capital-weighted average APY from per-cohort monthly stats
-                    weighted_apy_sum = 0.0
-                    total_weight = 0.0
-                    for ms in month_stats:
-                        ms_deposit = ms[1] or 0.0
-                        ms_apy = ms[5]
-                        if ms_apy is not None and ms_deposit > 0:
-                            weighted_apy_sum += ms_apy * ms_deposit
-                            total_weight += ms_deposit
-                    
-                    if total_weight > 0:
-                        annual_per_yield = weighted_apy_sum / total_weight
-                    else:
-                        annual_per_yield = None
+                    hpr, total_days = self._modified_dietz_hpr(
+                        deposit, total_gainloss, value, start_date, parsed_cfs, today)
+                    annual_per_yield = self._annualize_hpr(hpr, total_days)
                     
                     # Insert into per-account yearly table
                     cur.execute("""
@@ -551,12 +542,11 @@ class StatCalculator:
                     realized_gainloss_per = 0.0
                     unrealized_gainloss_per = 0.0
                 
-                # Calculate APY using Modified Dietz via cohort_cash_flows for combined accounts
                 if isinstance(month, str):
                     month_date = datetime.strptime(month, "%Y-%m-%d").date()
                 else:
                     month_date = month
-                
+
                 start_date = month_date.replace(day=15)
                 
                 cur.execute(f"""
@@ -579,7 +569,7 @@ class StatCalculator:
                     total_gainloss_per, realized_gainloss_per, unrealized_gainloss_per,
                     annual_per_yield
                 ))
-        
+
         else:  # period == "year"
             # Merge yearly stats
             query = f"""
@@ -628,21 +618,22 @@ class StatCalculator:
                     realized_gainloss_per = 0.0
                     unrealized_gainloss_per = 0.0
                 
-                # Calculate APY by capital-weighted average of per-account yearly APYs
-                weighted_apy_sum = 0.0
-                total_weight = 0.0
-                for acc in accounts:
-                    cur.execute("""
-                        SELECT deposit, annual_per_yield
-                        FROM account_year_stats
-                        WHERE account = ? AND year = ?
-                    """, (acc, f"{year}-01-01"))
-                    acc_row = cur.fetchone()
-                    if acc_row and acc_row[1] is not None and (acc_row[0] or 0) > 0:
-                        weighted_apy_sum += acc_row[1] * acc_row[0]
-                        total_weight += acc_row[0]
+                # Calculate APY for year stats using Modified Dietz via cohort_cash_flows for combined accounts
+                start_date = datetime(year=year, month=7, day=1).date()
                 
-                annual_per_yield = weighted_apy_sum / total_weight if total_weight > 0 else None
+                cur.execute(f"""
+                    SELECT transaction_month, amount
+                    FROM cohort_cash_flows
+                    WHERE strftime('%Y', cohort_month) = ? AND account IN ({placeholders})
+                """, (str(year),) + tuple(accounts))
+                parsed_cfs = [
+                    (datetime.strptime(r[0], "%Y-%m-%d").date() if isinstance(r[0], str) else r[0], r[1])
+                    for r in cur.fetchall()
+                ]
+                
+                hpr, total_days = self._modified_dietz_hpr(
+                    deposit, total_gainloss, value, start_date, parsed_cfs, today)
+                annual_per_yield = self._annualize_hpr(hpr, total_days)
                 
                 stats.append((
                     date(year, 1, 1), deposit, withdrawal, value,
