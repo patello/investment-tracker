@@ -250,12 +250,13 @@ class DataParser:
     
     def reset_processed_transactions(self) -> None:
         """
-        Resets the processed flag for all transactions in the database. Also resets month_data, month_assets and assets tables.
+        Resets the processed flag for all transactions in the database. Also resets month_data, month_assets, assets and cohort_cash_flows tables.
         """
         self.data_cur.execute("UPDATE transactions SET processed = 0")
         self.db.reset_table("month_data")
         self.db.reset_table("month_assets")
         self.db.reset_table("assets")
+        self.db.reset_table("cohort_cash_flows")
         self.db.commit()
 
     def allocate_to_month(self, transaction_date: date) -> date:
@@ -341,6 +342,7 @@ class DataParser:
     def handle_withdrawal(self, row: tuple) -> None:
         """
         Takes a transaction row and subtracts the amount from the capital of the oldest month(s) with available capital.
+        Logs each partial allocation to cohort_cash_flows, aggregated by the transaction's month.
         If there is not enough total capital available, the transaction is not processed.
         In per-account mode, only uses capital from the same account.
 
@@ -350,6 +352,9 @@ class DataParser:
         total_amount = -row[6]
         remaining_amount = total_amount
         account = row[1]
+        transaction_date = row[0]
+        transaction_month = self.allocate_to_month(transaction_date)
+        
         month_capital = self.available_capital(account)
         total_capital = sum(e[1] for e in month_capital)
         if total_capital + 1e-4 >= total_amount:
@@ -358,6 +363,15 @@ class DataParser:
                 (oldest_available,capital) = month_capital[i]
                 month_amount = min(remaining_amount,capital)
                 self.data_cur.execute("UPDATE month_data SET capital = capital - ?, withdrawal = withdrawal + ? WHERE month = ? AND account = ?", (month_amount, month_amount, oldest_available, account))
+                
+                # Aggregate cash flow for the cohort in the transaction month
+                self.data_cur.execute("""
+                    INSERT INTO cohort_cash_flows (cohort_month, account, transaction_month, amount)
+                    VALUES (?, ?, ?, ?)
+                    ON CONFLICT(cohort_month, account, transaction_month)
+                    DO UPDATE SET amount = amount + excluded.amount
+                """, (oldest_available, account, transaction_month, -month_amount))
+                
                 remaining_amount -= month_amount
                 i += 1
             self.transaction_cur.execute("UPDATE transactions SET processed = 1 WHERE rowid = ?",(row[-1],))
@@ -495,6 +509,7 @@ class DataParser:
     def handle_fees(self, row: tuple) -> None:
         """
         Takes a transaction row and subtracts the fee amount from the capital of the oldest month(s) with available capital.
+        Logs each partial allocation to cohort_cash_flows, aggregated by the transaction's month.
         If there is not enough total capital available, the transaction is not processed.
         In per-account mode, only uses capital from the same account.
 
@@ -504,6 +519,9 @@ class DataParser:
         total_amount = -row[6]
         remaining_amount = total_amount
         account = row[1]
+        transaction_date = row[0]
+        transaction_month = self.allocate_to_month(transaction_date)
+        
         month_capital = self.available_capital(account)
         total_capital = sum(e[1] for e in month_capital)
         if total_capital + 1e-4 >= total_amount:
@@ -512,6 +530,15 @@ class DataParser:
                 (oldest_available,capital) = month_capital[i]
                 month_amount = min(remaining_amount,capital)
                 self.data_cur.execute("UPDATE month_data SET capital = capital - ? WHERE month = ? AND account = ?", (month_amount, oldest_available, account))
+                
+                # Aggregate fee cash flow for the cohort in the transaction month
+                self.data_cur.execute("""
+                    INSERT INTO cohort_cash_flows (cohort_month, account, transaction_month, amount)
+                    VALUES (?, ?, ?, ?)
+                    ON CONFLICT(cohort_month, account, transaction_month)
+                    DO UPDATE SET amount = amount + excluded.amount
+                """, (oldest_available, account, transaction_month, -month_amount))
+                
                 remaining_amount -= month_amount
                 i += 1
             self.transaction_cur.execute("UPDATE transactions SET processed = 1 WHERE rowid = ?",(row[-1],))
@@ -584,6 +611,7 @@ class DataParser:
         """
         Handles 'Intern överföring' (internal transfer between accounts).
         Processes transfers in pairs (OUT and IN) to preserve FIFO month attribution.
+        Logs resulting cash flow events to cohort_cash_flows, aggregated by the transaction's month.
 
         Parameters:
         row (tuple): A row from the transactions table in the database.
@@ -605,13 +633,23 @@ class DataParser:
         if self.pending_transfer["amount"] < 0:
             out_account = self.pending_transfer["account"]
             out_amount = -self.pending_transfer["amount"]
+            out_date = self.pending_transfer["date"]
+            out_rowid = self.pending_transfer["rowid"]
+            
             in_account = row[1]
             in_amount = row[6]
+            in_date = row[0]
+            in_rowid = row[-1]
         else:
             out_account = row[1]
             out_amount = -row[6]
+            out_date = row[0]
+            out_rowid = row[-1]
+            
             in_account = self.pending_transfer["account"]
             in_amount = self.pending_transfer["amount"]
+            in_date = self.pending_transfer["date"]
+            in_rowid = self.pending_transfer["rowid"]
         
         # Get FIFO allocations from OUT account (following withdrawal pattern)
         month_capital = self.available_capital(out_account)
@@ -621,6 +659,8 @@ class DataParser:
             allocations = []
             remaining = out_amount
             i = 0
+            
+            out_transaction_month = self.allocate_to_month(out_date)
             
             while remaining > 1e-4:
                 (oldest_available, capital) = month_capital[i]
@@ -633,10 +673,18 @@ class DataParser:
                     (month_amount, oldest_available, out_account)
                 )
                 
+                self.data_cur.execute("""
+                    INSERT INTO cohort_cash_flows (cohort_month, account, transaction_month, amount)
+                    VALUES (?, ?, ?, ?)
+                    ON CONFLICT(cohort_month, account, transaction_month)
+                    DO UPDATE SET amount = amount + excluded.amount
+                """, (oldest_available, out_account, out_transaction_month, -month_amount))
+                
                 remaining -= month_amount
                 i += 1
             
             # Add to IN account in same months
+            in_transaction_month = self.allocate_to_month(in_date)
             for oldest_available, amount in allocations:
                 self.data_cur.execute(
                     "INSERT OR IGNORE INTO month_data(month, account) VALUES(?,?)",
@@ -646,6 +694,13 @@ class DataParser:
                     "UPDATE month_data SET capital = capital + ? WHERE month = ? AND account = ?",
                     (amount, oldest_available, in_account)
                 )
+                
+                self.data_cur.execute("""
+                    INSERT INTO cohort_cash_flows (cohort_month, account, transaction_month, amount)
+                    VALUES (?, ?, ?, ?)
+                    ON CONFLICT(cohort_month, account, transaction_month)
+                    DO UPDATE SET amount = amount + excluded.amount
+                """, (oldest_available, in_account, in_transaction_month, amount))
             
             # Mark BOTH processed
             self.transaction_cur.execute(
