@@ -398,6 +398,16 @@ class DataParser:
                 if cv > 1e-4:
                     r = month_amount / cv
                     r = min(r, 1.0)  # Cap at 100%
+                    # Snapshot TWRR before zeroing active_base on full withdrawal
+                    if r >= 1.0 - 1e-6:
+                        ab_row = self.data_cur.execute(
+                            "SELECT active_base FROM month_data WHERE month = ? AND account = ?",
+                            (oldest_available, account)).fetchone()
+                        ab = ab_row[0] if ab_row and ab_row[0] else 0.0
+                        if ab > 1e-4:
+                            self.data_cur.execute(
+                                "UPDATE month_data SET closed_return = ? WHERE month = ? AND account = ?",
+                                (cv / ab, oldest_available, account))
                     self.data_cur.execute(
                         "UPDATE month_data SET active_base = active_base * (1 - ?) WHERE month = ? AND account = ?",
                         (r, oldest_available, account))

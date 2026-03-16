@@ -51,6 +51,66 @@ def test_twrr_active_base_tracking(twrr_scenario_db):
     assert abs(active_base - 5000.0) < 1.0, f"Expected active_base ~5000, got {active_base}"
 
 
+def test_twrr_closed_return_snapshot(twrr_scenario_db):
+    """
+    Test that closed_return is stored when a position is fully closed.
+    """
+    twrr_scenario_db.connect()
+    cur = twrr_scenario_db.get_cursor()
+    
+    # closed_return should be NULL since position is still open (50 shares remain)
+    row = cur.execute("SELECT closed_return FROM month_data").fetchone()
+    assert row[0] is None, "Open position should not have closed_return"
+
+
+@pytest.fixture
+def twrr_closed_db(tmp_path):
+    """
+    Scenario for testing TWRR on fully closed positions:
+    - Deposit 10000, buy asset at 100 (100 shares)
+    - Asset doubles to 200
+    - Sell all 100 shares at 200 = 20000
+    - Withdraw 20000
+    - Position fully closed, total return = 2.0x
+    """
+    csv_content = """Datum;Konto;Typ av transaktion;Värdepapper/beskrivning;Antal;Kurs;Belopp;Courtage;Valuta;ISIN;Resultat
+2020-01-15;1111;Insättning;Deposit;-;-;10000;0;SEK;;-
+2020-01-16;1111;Köp;Asset A;100;100;-10000;0;SEK;TESTA;-
+2021-01-15;1111;Sälj;Asset A;-100;200;20000;0;SEK;TESTA;-
+2021-01-16;1111;Uttag;;-;-;-20000;0;SEK;;-
+"""
+    csv_file = tmp_path / "twrr_closed.csv"
+    csv_file.write_text(csv_content, encoding="utf-8")
+
+    db_file = tmp_path / "test_twrr_closed.db"
+    db = DatabaseHandler(db_file)
+    parser = DataParser(db)
+    parser.add_data(str(csv_file))
+    parser.process_transactions()
+    return db
+
+
+def test_twrr_closed_position_has_return(twrr_closed_db):
+    """
+    Test that fully closed positions store closed_return and produce nonzero TWRR APY.
+    """
+    twrr_closed_db.connect()
+    cur = twrr_closed_db.get_cursor()
+    
+    row = cur.execute("SELECT closed_return FROM month_data").fetchone()
+    assert row[0] is not None, "Closed position should have closed_return"
+    assert abs(row[0] - 2.0) < 0.1, f"Expected closed_return ~2.0, got {row[0]}"
+    
+    # Stats with TWRR should show nonzero APY
+    stat_calc = StatCalculator(twrr_closed_db)
+    stat_calc.calculate_stats(apy_mode='twrr')
+    stats = stat_calc.get_stats(accounts=["1111"], period="month", deposits="all", apy_mode='twrr')
+    
+    cohort = stats[0]
+    apy = cohort[10]
+    assert apy is not None and apy > 5, f"Expected positive TWRR APY for closed position, got {apy}%"
+
+
 def test_twrr_apy_open_position(twrr_scenario_db):
     """
     Test that TWRR APY uses active_base for open positions.

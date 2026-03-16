@@ -152,7 +152,7 @@ class StatCalculator:
         logging.info("Dropped old global cached tables")
     
     def _calc_apy(self, apy_mode, active_base, value, deposit, total_gainloss,
-                   month_str, account, start_date, today, cur):
+                   month_str, account, start_date, today, cur, closed_return=None):
         """
         Calculate APY using the specified mode.
         
@@ -167,6 +167,7 @@ class StatCalculator:
         start_date (date): Start date for time-weighting
         today (date): Current date
         cur: Database cursor
+        closed_return (float or None): Snapshot of value/active_base at time of closure
         
         Returns:
         float or None: APY percentage
@@ -177,6 +178,11 @@ class StatCalculator:
                 total_days = (today - start_date).days
                 if total_days > 0:
                     return 100 * (total_return ** (365.0 / total_days) - 1)
+            elif closed_return is not None and closed_return > 0:
+                # Closed position: use snapshot taken at time of full withdrawal
+                total_days = (today - start_date).days
+                if total_days > 0:
+                    return 100 * (closed_return ** (365.0 / total_days) - 1)
             return 0.0
         
         # Modified Dietz
@@ -232,6 +238,19 @@ class StatCalculator:
                 total_days = (today - start_date).days
                 if total_days > 0:
                     return 100 * (total_return ** (365.0 / total_days) - 1)
+            
+            # Check for closed positions with snapshot
+            cur.execute(f"""
+                SELECT SUM(deposit * closed_return), SUM(deposit)
+                FROM month_data
+                WHERE month = ? AND account IN ({placeholders}) AND closed_return IS NOT NULL
+            """, (month_str,) + tuple(accounts))
+            cr_row = cur.fetchone()
+            if cr_row and cr_row[0] and cr_row[1] and cr_row[1] > 0:
+                weighted_cr = cr_row[0] / cr_row[1]
+                total_days = (today - start_date).days
+                if total_days > 0:
+                    return 100 * (weighted_cr ** (365.0 / total_days) - 1)
             return 0.0
         
         # Modified Dietz for multi-account
@@ -273,6 +292,19 @@ class StatCalculator:
                 total_days = (today - start_date).days
                 if total_days > 0:
                     return 100 * (total_return ** (365.0 / total_days) - 1)
+            
+            # Check for closed positions with snapshot
+            cur.execute(f"""
+                SELECT SUM(deposit * closed_return), SUM(deposit)
+                FROM month_data
+                WHERE strftime('%Y', month) = ? AND account IN ({placeholders}) AND closed_return IS NOT NULL
+            """, (year_str,) + tuple(accounts))
+            cr_row = cur.fetchone()
+            if cr_row and cr_row[0] and cr_row[1] and cr_row[1] > 0:
+                weighted_cr = cr_row[0] / cr_row[1]
+                total_days = (today - start_date).days
+                if total_days > 0:
+                    return 100 * (weighted_cr ** (365.0 / total_days) - 1)
             return 0.0
         
         # Modified Dietz for multi-account year
@@ -320,7 +352,7 @@ class StatCalculator:
         for account in accounts:
             # Get all months for this account in chronological order
             cur.execute("""
-                SELECT month, deposit, withdrawal, capital, active_base
+                SELECT month, deposit, withdrawal, capital, active_base, closed_return
                 FROM month_data
                 WHERE account = ?
                 ORDER BY month ASC
@@ -339,7 +371,7 @@ class StatCalculator:
             acc_realized_gainloss = 0.0
             acc_unrealized_gainloss = 0.0
             
-            for month_str, deposit, withdrawal, capital, active_base in month_rows:
+            for month_str, deposit, withdrawal, capital, active_base, closed_return in month_rows:
                 # Handle NULL values
                 deposit = deposit or 0.0
                 withdrawal = withdrawal or 0.0
@@ -395,7 +427,7 @@ class StatCalculator:
                 start_date = month_date.replace(day=15)
                 annual_per_yield = self._calc_apy(
                     apy_mode, active_base, value, deposit, total_gainloss,
-                    month_str, account, start_date, today, cur)
+                    month_str, account, start_date, today, cur, closed_return=closed_return)
                 
                 # Update accumulators (same logic as original)
                 acc_deposit += deposit
@@ -479,6 +511,18 @@ class StatCalculator:
                 capital = dep_row[2] or 0.0
                 active_base = dep_row[3] or 0.0
                 
+                # Get deposit-weighted closed_return for closed cohorts in this year
+                cur.execute("""
+                    SELECT SUM(deposit * closed_return), SUM(deposit)
+                    FROM month_data
+                    WHERE account = ? AND strftime('%Y', month) = ? AND closed_return IS NOT NULL
+                """, (account, year_str))
+                cr_row = cur.fetchone()
+                if cr_row and cr_row[0] and cr_row[1] and cr_row[1] > 0:
+                    weighted_closed_return = cr_row[0] / cr_row[1]
+                else:
+                    weighted_closed_return = None
+                
                 # Sum cohort asset holdings for the entire year
                 cur.execute("""
                     SELECT ma.asset_id, SUM(ma.amount), a.latest_price
@@ -537,6 +581,12 @@ class StatCalculator:
                             total_days = (today - start_date).days
                             if total_days > 0:
                                 annual_per_yield = 100 * (total_return ** (365.0 / total_days) - 1)
+                            else:
+                                annual_per_yield = 0.0
+                        elif weighted_closed_return is not None and weighted_closed_return > 0:
+                            total_days = (today - start_date).days
+                            if total_days > 0:
+                                annual_per_yield = 100 * (weighted_closed_return ** (365.0 / total_days) - 1)
                             else:
                                 annual_per_yield = 0.0
                         else:
