@@ -262,19 +262,28 @@ class DataParser:
     def allocate_to_month(self, transaction_date: date) -> date:
         """
         Takes a date and returns which month the transaction should be allocated to.
-        The cutoff rule has been removed, returning the exact calendar month.
+        If the transaction is made within the first cutoff_days of the month, allocate it to the previous month.
 
         Parameters:
         transaction_date (date): The date of the transaction.
 
         Returns:
-        date: The last day of the calendar month the transaction occurred in.
+        date: The date of the month the transaction should be allocated to.
         """
+        cutoff_days = 10
+        day = transaction_date.day
         month = transaction_date.month
         year = transaction_date.year
+
+        if day <= cutoff_days:
+            if month > 1:
+                month = month - 1
+            else:
+                month = 12
+                year = year - 1
         
-        day = calendar.monthrange(year, month)[1]
-        return date(year, month, day)
+        day = calendar.monthrange(year,month)[1]
+        return date(year,month,day)
 
     def available_capital(self, account: str) -> list:
         """
