@@ -216,13 +216,6 @@ class DatabaseHandler:
 
         self.conn.commit()
 
-        # Schema migrations for existing databases
-        try:
-            cursor.execute("SELECT closed_return FROM month_data LIMIT 1")
-        except sqlite3.OperationalError:
-            cursor.execute("ALTER TABLE month_data ADD COLUMN closed_return REAL DEFAULT NULL")
-            self.conn.commit()
-
         # Return a list of tables in the database
         cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
         return [table[0] for table in cursor.fetchall()]
