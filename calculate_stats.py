@@ -175,7 +175,7 @@ class StatCalculator:
         for account in accounts:
             # Get all months for this account in chronological order
             cur.execute("""
-                SELECT month, deposit, withdrawal, capital
+                SELECT month, deposit, withdrawal, capital, active_base
                 FROM month_data
                 WHERE account = ?
                 ORDER BY month ASC
@@ -194,7 +194,7 @@ class StatCalculator:
             acc_realized_gainloss = 0.0
             acc_unrealized_gainloss = 0.0
             
-            for month_str, deposit, withdrawal, capital in month_rows:
+            for month_str, deposit, withdrawal, capital, active_base in month_rows:
                 # Handle NULL values
                 deposit = deposit or 0.0
                 withdrawal = withdrawal or 0.0
@@ -240,27 +240,39 @@ class StatCalculator:
                     realized_gainloss_per = 0.0
                     unrealized_gainloss_per = 0.0
                 
-                # Calculate APY using Modified Dietz Method via cohort_cash_flows
+                # Calculate APY using TWRR via active_base
                 if isinstance(month_str, str):
                     month_date = datetime.strptime(month_str, "%Y-%m-%d").date()
                 else:
                     month_date = month_str
 
-                start_date = month_date.replace(day=15)
-                
-                cur.execute("""
-                    SELECT transaction_month, amount
-                    FROM cohort_cash_flows
-                    WHERE cohort_month = ? AND account = ?
-                """, (month_str, account))
-                parsed_cfs = [
-                    (datetime.strptime(r[0], "%Y-%m-%d").date() if isinstance(r[0], str) else r[0], r[1])
-                    for r in cur.fetchall()
-                ]
-                
-                hpr, total_days = self._modified_dietz_hpr(
-                    deposit, total_gainloss, value, start_date, parsed_cfs, today)
-                annual_per_yield = self._annualize_hpr(hpr, total_days)
+                active_base = active_base or 0.0
+                if active_base > 1e-4 and value > 0:
+                    # Open position: TWRR using active_base as denominator
+                    total_return = value / active_base
+                    start_date = month_date.replace(day=15)
+                    total_days = (today - start_date).days
+                    if total_days > 0:
+                        annual_per_yield = 100 * (total_return ** (365.0 / total_days) - 1)
+                    else:
+                        annual_per_yield = 0.0
+                elif value <= 0 and total_gainloss != 0 and deposit > 0:
+                    # Closed position: fall back to Modified Dietz
+                    start_date = month_date.replace(day=15)
+                    cur.execute("""
+                        SELECT transaction_month, amount
+                        FROM cohort_cash_flows
+                        WHERE cohort_month = ? AND account = ?
+                    """, (month_str, account))
+                    parsed_cfs = [
+                        (datetime.strptime(r[0], "%Y-%m-%d").date() if isinstance(r[0], str) else r[0], r[1])
+                        for r in cur.fetchall()
+                    ]
+                    hpr, total_days = self._modified_dietz_hpr(
+                        deposit, total_gainloss, value, start_date, parsed_cfs, today)
+                    annual_per_yield = self._annualize_hpr(hpr, total_days)
+                else:
+                    annual_per_yield = 0.0
                 
                 # Update accumulators (same logic as original)
                 acc_deposit += deposit
@@ -331,7 +343,7 @@ class StatCalculator:
             for year_str in years:
                 # Sum cohort deposits, withdrawals, and cash capital for the entire year
                 cur.execute("""
-                    SELECT SUM(deposit), SUM(withdrawal), SUM(capital)
+                    SELECT SUM(deposit), SUM(withdrawal), SUM(capital), SUM(active_base)
                     FROM month_data
                     WHERE account = ? AND strftime('%Y', month) = ?
                 """, (account, year_str))
@@ -339,6 +351,7 @@ class StatCalculator:
                 deposit = dep_row[0] or 0.0
                 withdrawal = dep_row[1] or 0.0
                 capital = dep_row[2] or 0.0
+                active_base = dep_row[3] or 0.0
                 
                 # Sum cohort asset holdings for the entire year
                 cur.execute("""
@@ -389,22 +402,17 @@ class StatCalculator:
                 if last_month:
                     year_date = f"{year_str}-01-01"
                     
-                    # Calculate APY for yearly stats using Modified Dietz via cohort_cash_flows
-                    start_date = datetime(year=int(year_str), month=7, day=1).date()
-                    
-                    cur.execute("""
-                        SELECT transaction_month, amount
-                        FROM cohort_cash_flows
-                        WHERE strftime('%Y', cohort_month) = ? AND account = ?
-                    """, (year_str, account))
-                    parsed_cfs = [
-                        (datetime.strptime(r[0], "%Y-%m-%d").date() if isinstance(r[0], str) else r[0], r[1])
-                        for r in cur.fetchall()
-                    ]
-                    
-                    hpr, total_days = self._modified_dietz_hpr(
-                        deposit, total_gainloss, value, start_date, parsed_cfs, today)
-                    annual_per_yield = self._annualize_hpr(hpr, total_days)
+                    # Calculate APY using TWRR via active_base
+                    if active_base > 1e-4 and value > 0:
+                        total_return = value / active_base
+                        start_date = datetime(year=int(year_str), month=7, day=1).date()
+                        total_days = (today - start_date).days
+                        if total_days > 0:
+                            annual_per_yield = 100 * (total_return ** (365.0 / total_days) - 1)
+                        else:
+                            annual_per_yield = 0.0
+                    else:
+                        annual_per_yield = 0.0
                     
                     # Insert into per-account yearly table
                     cur.execute("""
@@ -547,21 +555,25 @@ class StatCalculator:
                 else:
                     month_date = month
 
-                start_date = month_date.replace(day=15)
-                
+                # Calculate APY using TWRR via active_base
                 cur.execute(f"""
-                    SELECT transaction_month, amount
-                    FROM cohort_cash_flows
-                    WHERE cohort_month = ? AND account IN ({placeholders})
+                    SELECT SUM(active_base)
+                    FROM month_data
+                    WHERE month = ? AND account IN ({placeholders})
                 """, (month,) + tuple(accounts))
-                parsed_cfs = [
-                    (datetime.strptime(r[0], "%Y-%m-%d").date() if isinstance(r[0], str) else r[0], r[1])
-                    for r in cur.fetchall()
-                ]
-                
-                hpr, total_days = self._modified_dietz_hpr(
-                    deposit, total_gainloss, value, start_date, parsed_cfs, today)
-                annual_per_yield = self._annualize_hpr(hpr, total_days)
+                ab_row = cur.fetchone()
+                active_base = ab_row[0] if ab_row and ab_row[0] else 0.0
+
+                if active_base > 1e-4 and value > 0:
+                    total_return = value / active_base
+                    start_date = month_date.replace(day=15)
+                    total_days = (today - start_date).days
+                    if total_days > 0:
+                        annual_per_yield = 100 * (total_return ** (365.0 / total_days) - 1)
+                    else:
+                        annual_per_yield = 0.0
+                else:
+                    annual_per_yield = 0.0
                 
                 stats.append((
                     month_date, deposit, withdrawal, value,
@@ -618,22 +630,25 @@ class StatCalculator:
                     realized_gainloss_per = 0.0
                     unrealized_gainloss_per = 0.0
                 
-                # Calculate APY for year stats using Modified Dietz via cohort_cash_flows for combined accounts
-                start_date = datetime(year=year, month=7, day=1).date()
-                
+                # Calculate APY using TWRR via active_base
                 cur.execute(f"""
-                    SELECT transaction_month, amount
-                    FROM cohort_cash_flows
-                    WHERE strftime('%Y', cohort_month) = ? AND account IN ({placeholders})
+                    SELECT SUM(active_base)
+                    FROM month_data
+                    WHERE strftime('%Y', month) = ? AND account IN ({placeholders})
                 """, (str(year),) + tuple(accounts))
-                parsed_cfs = [
-                    (datetime.strptime(r[0], "%Y-%m-%d").date() if isinstance(r[0], str) else r[0], r[1])
-                    for r in cur.fetchall()
-                ]
-                
-                hpr, total_days = self._modified_dietz_hpr(
-                    deposit, total_gainloss, value, start_date, parsed_cfs, today)
-                annual_per_yield = self._annualize_hpr(hpr, total_days)
+                ab_row = cur.fetchone()
+                active_base = ab_row[0] if ab_row and ab_row[0] else 0.0
+
+                if active_base > 1e-4 and value > 0:
+                    total_return = value / active_base
+                    start_date = datetime(year=year, month=7, day=1).date()
+                    total_days = (today - start_date).days
+                    if total_days > 0:
+                        annual_per_yield = 100 * (total_return ** (365.0 / total_days) - 1)
+                    else:
+                        annual_per_yield = 0.0
+                else:
+                    annual_per_yield = 0.0
                 
                 stats.append((
                     date(year, 1, 1), deposit, withdrawal, value,
