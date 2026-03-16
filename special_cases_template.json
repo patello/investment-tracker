@@ -57,5 +57,31 @@
                 "value": "CORRECT OLD ASSET NAME"
             }
         ]
+    },
+    {
+        "condition": [
+            {
+                "index": 9,
+                "value": "ISIN9876543210"
+            },
+            {
+                "index": 2,
+                "value": "Värdepappersinsättning"
+            }
+        ],
+        "replacement": [
+            {
+                "index": 2,
+                "value": "Tillgångsinsättning"
+            },
+            {
+                "index": 3,
+                "value": "EXAMPLE ASSET CUSTOM COST BASIS"
+            },
+            {
+                "index": 5,
+                "value": "123.45"
+            }
+        ]
     }
 ]
