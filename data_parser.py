@@ -262,28 +262,19 @@ class DataParser:
     def allocate_to_month(self, transaction_date: date) -> date:
         """
         Takes a date and returns which month the transaction should be allocated to.
-        If the transaction is made within the first cutoff_days of the month, allocate it to the previous month.
+        The cutoff rule has been removed, returning the exact calendar month.
 
         Parameters:
         transaction_date (date): The date of the transaction.
 
         Returns:
-        date: The date of the month the transaction should be allocated to.
+        date: The last day of the calendar month the transaction occurred in.
         """
-        cutoff_days = 10
-        day = transaction_date.day
         month = transaction_date.month
         year = transaction_date.year
-
-        if day <= cutoff_days:
-            if month > 1:
-                month = month - 1
-            else:
-                month = 12
-                year = year - 1
         
-        day = calendar.monthrange(year,month)[1]
-        return date(year,month,day)
+        day = calendar.monthrange(year, month)[1]
+        return date(year, month, day)
 
     def available_capital(self, account: str) -> list:
         """
@@ -394,6 +385,8 @@ class DataParser:
         asset_amount = row[4]
         price = row[5]
         total_amount = -row[6]
+        date = row[0]
+        self.data_cur.execute("UPDATE assets SET latest_price = ?, latest_price_date = ? WHERE asset_id = ?", (price, date, asset_id))
         remaining_amount = total_amount
         month_capital = self.available_capital(account)
         total_capital = sum(e[1] for e in month_capital)
@@ -431,6 +424,8 @@ class DataParser:
         asset_amount = -row[4]
         price = row[5]
         total_amount = row[6]
+        date = row[0]
+        self.data_cur.execute("UPDATE assets SET latest_price = ?, latest_price_date = ? WHERE asset_id = ?", (price, date, asset_id))
         remaining_amount = asset_amount
         month_asset_amounts = self.available_asset(asset_id, account)
         total_asset_amount = sum(e[1] for e in month_asset_amounts)
@@ -583,6 +578,8 @@ class DataParser:
         price = row[5]
         self.data_cur.execute("INSERT OR IGNORE INTO assets (asset) VALUES (?) ",(asset,))
         asset_id = self.data_cur.execute("SELECT asset_id FROM assets WHERE asset = ?",(asset,)).fetchone()[0]
+        date = row[0]
+        self.data_cur.execute("UPDATE assets SET latest_price = ?, latest_price_date = ? WHERE asset_id = ?", (price, date, asset_id))
         self.data_cur.execute("INSERT OR IGNORE INTO month_assets(month,asset_id,account) VALUES (?,?,?)",(month,asset_id,account))
         # Update average price and average purchase price
         self.data_cur.execute("UPDATE month_assets SET average_price = (? * ? + amount * average_price) / (amount + ?) WHERE month = ? AND asset_id = ? AND account = ?", (amount, price, amount, month, asset_id, account))
