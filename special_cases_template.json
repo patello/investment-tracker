@@ -26,13 +26,13 @@
             },
             {
                 "index": 2,
-                "value": "Värdepappersinsättning"
+                "value": "V\u00e4rdepappersins\u00e4ttning"
             }
         ],
         "replacement": [
             {
                 "index": 2,
-                "value": "Tillgångsinsättning"
+                "value": "Tillg\u00e5ngsins\u00e4ttning"
             },
             {
                 "index": 3,
@@ -48,13 +48,39 @@
             },
             {
                 "index": 2,
-                "value": "Värdepappersuttag"
+                "value": "V\u00e4rdepappersuttag"
             }
         ],
         "replacement": [
             {
                 "index": 3,
                 "value": "CORRECT OLD ASSET NAME"
+            }
+        ]
+    },
+    {
+        "condition": [
+            {
+                "index": 9,
+                "value": "ISIN9876543210"
+            },
+            {
+                "index": 2,
+                "value": "V\u00e4rdepappersins\u00e4ttning"
+            }
+        ],
+        "replacement": [
+            {
+                "index": 2,
+                "value": "Tillg\u00e5ngsins\u00e4ttning"
+            },
+            {
+                "index": 3,
+                "value": "EXAMPLE ASSET CUSTOM COST BASIS"
+            },
+            {
+                "index": 5,
+                "value": "123.45"
             }
         ]
     }
