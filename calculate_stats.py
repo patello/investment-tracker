@@ -180,17 +180,7 @@ class StatCalculator:
                     return 100 * (total_return ** (365.0 / total_days) - 1)
             elif closed_return is not None and closed_return > 0:
                 # Closed position: use snapshot taken at time of full withdrawal
-                # Determine end date as last cash flow date for this cohort
-                cur.execute("""
-                    SELECT MAX(transaction_month)
-                    FROM cohort_cash_flows
-                    WHERE cohort_month = ? AND account = ?
-                """, (month_str, account))
-                row = cur.fetchone()
-                end_date = today
-                if row and row[0]:
-                    end_date = datetime.strptime(row[0], "%Y-%m-%d").date() if isinstance(row[0], str) else row[0]
-                total_days = (end_date - start_date).days
+                total_days = (today - start_date).days
                 if total_days > 0:
                     return 100 * (closed_return ** (365.0 / total_days) - 1)
             return 0.0
@@ -258,17 +248,7 @@ class StatCalculator:
             cr_row = cur.fetchone()
             if cr_row and cr_row[0] and cr_row[1] and cr_row[1] > 0:
                 weighted_cr = cr_row[0] / cr_row[1]
-                # Determine end date as last cash flow date across these accounts for this cohort
-                cur.execute(f"""
-                    SELECT MAX(transaction_month)
-                    FROM cohort_cash_flows
-                    WHERE cohort_month = ? AND account IN ({placeholders})
-                """, (month_str,) + tuple(accounts))
-                row = cur.fetchone()
-                end_date = today
-                if row and row[0]:
-                    end_date = datetime.strptime(row[0], "%Y-%m-%d").date() if isinstance(row[0], str) else row[0]
-                total_days = (end_date - start_date).days
+                total_days = (today - start_date).days
                 if total_days > 0:
                     return 100 * (weighted_cr ** (365.0 / total_days) - 1)
             return 0.0
@@ -322,17 +302,7 @@ class StatCalculator:
             cr_row = cur.fetchone()
             if cr_row and cr_row[0] and cr_row[1] and cr_row[1] > 0:
                 weighted_cr = cr_row[0] / cr_row[1]
-                # Determine end date as last cash flow date across these accounts for this year cohort
-                cur.execute(f"""
-                    SELECT MAX(transaction_month)
-                    FROM cohort_cash_flows
-                    WHERE strftime('%Y', cohort_month) = ? AND account IN ({placeholders})
-                """, (year_str,) + tuple(accounts))
-                row = cur.fetchone()
-                end_date = today
-                if row and row[0]:
-                    end_date = datetime.strptime(row[0], "%Y-%m-%d").date() if isinstance(row[0], str) else row[0]
-                total_days = (end_date - start_date).days
+                total_days = (today - start_date).days
                 if total_days > 0:
                     return 100 * (weighted_cr ** (365.0 / total_days) - 1)
             return 0.0
