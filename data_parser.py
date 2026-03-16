@@ -285,6 +285,36 @@ class DataParser:
         day = calendar.monthrange(year,month)[1]
         return date(year,month,day)
 
+    def cohort_value(self, cohort_month, account: str) -> float:
+        """
+        Calculate the estimated current value of a cohort (month + account).
+        Value = cash (capital) + sum(asset_amount * last_seen_price).
+        Uses latest_price from the assets table as the last seen transaction price.
+
+        Parameters:
+        cohort_month: The cohort month date.
+        account (str): The account name.
+
+        Returns:
+        float: Estimated cohort value.
+        """
+        # Get cash for this cohort
+        row = self.data_cur.execute(
+            "SELECT capital FROM month_data WHERE month = ? AND account = ?",
+            (cohort_month, account)
+        ).fetchone()
+        cash = row[0] if row else 0.0
+
+        # Get asset values for this cohort using latest_price from assets table
+        asset_value = self.data_cur.execute("""
+            SELECT COALESCE(SUM(ma.amount * COALESCE(a.latest_price, ma.average_price)), 0)
+            FROM month_assets ma
+            JOIN assets a ON ma.asset_id = a.asset_id
+            WHERE ma.month = ? AND ma.account = ? AND ma.amount > 0
+        """, (cohort_month, account)).fetchone()[0]
+
+        return cash + asset_value
+
     def available_capital(self, account: str) -> list:
         """
         Get available capital for a specific account.
@@ -334,7 +364,7 @@ class DataParser:
         amount = row[6]
         account = row[1]
         self.data_cur.execute("INSERT OR IGNORE INTO month_data(month, account) VALUES(?,?)", (month, account))
-        self.data_cur.execute("UPDATE month_data SET capital = capital + ?, deposit = deposit + ? WHERE month = ? AND account = ?", (amount, amount, month, account))
+        self.data_cur.execute("UPDATE month_data SET capital = capital + ?, deposit = deposit + ?, active_base = active_base + ? WHERE month = ? AND account = ?", (amount, amount, amount, month, account))
         # Reset transaction_cur since new funds are available
         self.transaction_cur.execute("UPDATE transactions SET processed = 1 WHERE rowid = ?",(row[-1],))
         self.transaction_cur.execute("SELECT *,rowid FROM transactions WHERE processed == 0 ORDER BY date ASC, rowid ASC")
@@ -362,6 +392,26 @@ class DataParser:
             while remaining_amount > 1e-4:
                 (oldest_available,capital) = month_capital[i]
                 month_amount = min(remaining_amount,capital)
+
+                # Calculate withdrawal fraction R and reduce active_base proportionally
+                cv = self.cohort_value(oldest_available, account)
+                if cv > 1e-4:
+                    r = month_amount / cv
+                    r = min(r, 1.0)  # Cap at 100%
+                    # Snapshot TWRR before zeroing active_base on full withdrawal
+                    if r >= 1.0 - 1e-6:
+                        ab_row = self.data_cur.execute(
+                            "SELECT active_base FROM month_data WHERE month = ? AND account = ?",
+                            (oldest_available, account)).fetchone()
+                        ab = ab_row[0] if ab_row and ab_row[0] else 0.0
+                        if ab > 1e-4:
+                            self.data_cur.execute(
+                                "UPDATE month_data SET closed_return = ? WHERE month = ? AND account = ?",
+                                (cv / ab, oldest_available, account))
+                    self.data_cur.execute(
+                        "UPDATE month_data SET active_base = active_base * (1 - ?) WHERE month = ? AND account = ?",
+                        (r, oldest_available, account))
+
                 self.data_cur.execute("UPDATE month_data SET capital = capital - ?, withdrawal = withdrawal + ? WHERE month = ? AND account = ?", (month_amount, month_amount, oldest_available, account))
                 
                 # Aggregate cash flow for the cohort in the transaction month
@@ -596,7 +646,7 @@ class DataParser:
         # Update amount and purchased amount
         self.data_cur.execute("UPDATE month_assets SET amount = amount + ? WHERE month = ? AND asset_id = ? AND account = ?",(amount,month,asset_id,account))
         self.data_cur.execute("INSERT OR IGNORE INTO month_data(month, account) VALUES(?,?)", (month, account))
-        self.data_cur.execute("UPDATE month_data SET deposit = deposit + ? WHERE month = ? AND account = ?", (amount*price, month, account))
+        self.data_cur.execute("UPDATE month_data SET deposit = deposit + ?, active_base = active_base + ? WHERE month = ? AND account = ?", (amount*price, amount*price, month, account))
         # Reset transaction_cur since new assets are available
         self.transaction_cur.execute("UPDATE transactions SET processed = 1 WHERE rowid = ?",(row[-1],))
         self.transaction_cur.execute("SELECT *,rowid FROM transactions WHERE processed == 0 ORDER BY date ASC, rowid ASC")
@@ -673,6 +723,15 @@ class DataParser:
                 month_amount = min(remaining, capital)
                 allocations.append((oldest_available, month_amount))
                 
+                # Calculate withdrawal fraction R and reduce active_base for OUT account
+                cv = self.cohort_value(oldest_available, out_account)
+                if cv > 1e-4:
+                    r = month_amount / cv
+                    r = min(r, 1.0)
+                    self.data_cur.execute(
+                        "UPDATE month_data SET active_base = active_base * (1 - ?) WHERE month = ? AND account = ?",
+                        (r, oldest_available, out_account))
+
                 # Remove from OUT account
                 self.data_cur.execute(
                     "UPDATE month_data SET capital = capital - ? WHERE month = ? AND account = ?",
@@ -697,8 +756,8 @@ class DataParser:
                     (oldest_available, in_account)
                 )
                 self.data_cur.execute(
-                    "UPDATE month_data SET capital = capital + ? WHERE month = ? AND account = ?",
-                    (amount, oldest_available, in_account)
+                    "UPDATE month_data SET capital = capital + ?, active_base = active_base + ? WHERE month = ? AND account = ?",
+                    (amount, amount, oldest_available, in_account)
                 )
                 
                 self.data_cur.execute("""

@@ -106,6 +106,8 @@ class DatabaseHandler:
                 deposit REAL DEFAULT 0,
                 withdrawal REAL DEFAULT 0,
                 capital REAL DEFAULT 0,
+                active_base REAL DEFAULT 0,
+                closed_return REAL DEFAULT NULL,
                 PRIMARY KEY(month, account)
                 );""")
                 

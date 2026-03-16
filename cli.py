@@ -207,15 +207,20 @@ def stats(args):
                 return 1
     
     # Calculate stats if needed
-    if args.force or stats_need_recalculation(db):
+    apy_mode = getattr(args, 'apy_mode', 'modified-dietz')
+    # Force recalculation if APY mode changed
+    last_apy_mode = db.get_metadata('last_apy_mode') or 'modified-dietz'
+    apy_mode_changed = (apy_mode != last_apy_mode)
+    if args.force or apy_mode_changed or stats_need_recalculation(db):
         try:
             stat_calc = StatCalculator(db)
-            stat_calc.calculate_month_stats()
-            stat_calc.calculate_year_stats()
+            stat_calc.calculate_month_stats(apy_mode=apy_mode)
+            stat_calc.calculate_year_stats(apy_mode=apy_mode)
             
             # Update metadata
             now = datetime.now().isoformat()
             db.set_metadata('last_stats_calculation', now)
+            db.set_metadata('last_apy_mode', apy_mode)
             
             logging.info("Statistics calculated")
         except Exception as e:
@@ -225,7 +230,7 @@ def stats(args):
     # Display statistics
     try:
         stat_calc = StatCalculator(db)
-        kwargs = {'period': args.period, 'deposits': args.deposits}
+        kwargs = {'period': args.period, 'deposits': args.deposits, 'apy_mode': apy_mode}
         
         # Add account filter if specified
         if accounts is not None:
@@ -464,6 +469,12 @@ Examples:
         '--account',
         default='all',
         help='Accounts to include: "default", "all", or comma-separated list of accounts'
+    )
+    stats_parser.add_argument(
+        '--apy-mode',
+        choices=['modified-dietz', 'twrr'],
+        default='modified-dietz',
+        help='APY calculation method (default: modified-dietz)'
     )
     stats_parser.set_defaults(func=stats)
     
