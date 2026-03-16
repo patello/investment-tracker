@@ -79,7 +79,7 @@ class DatabaseHandler:
 
         cursor = self.conn.cursor()
 
-        # Enable foreign key support, used by month_assets table to reference assets and month_data
+        # Enable foreign key support, used by cohort_assets table to reference assets and cohort_data
         cursor.execute("PRAGMA foreign_keys = ON;")
 
         # transactions contains all raw transactions
@@ -98,9 +98,9 @@ class DatabaseHandler:
                 processed INT DEFAULT 0
                 )""")
 
-        # month_data contains the capital, deposits and withdrawals per account per month
+        # cohort_data contains the capital, deposits and withdrawals per account per month
         cursor.execute("""
-            CREATE TABLE IF NOT EXISTS month_data(
+            CREATE TABLE IF NOT EXISTS cohort_data(
                 month DATE NOT NULL,
                 account TEXT NOT NULL,
                 deposit REAL DEFAULT 0,
@@ -120,7 +120,7 @@ class DatabaseHandler:
                 account TEXT NOT NULL,
                 transaction_month DATE NOT NULL,
                 amount REAL DEFAULT 0,
-                FOREIGN KEY (cohort_month, account) REFERENCES month_data (month, account),
+                FOREIGN KEY (cohort_month, account) REFERENCES cohort_data (month, account),
                 PRIMARY KEY (cohort_month, account, transaction_month)
             );""")
 
@@ -140,9 +140,9 @@ class DatabaseHandler:
                 PRIMARY KEY(asset_id)
                 );""")
 
-        # month_assets contains the amount of each asset held, purchased and sold each month per account
+        # cohort_assets contains the amount of each asset held, purchased and sold each month per account
         cursor.execute("""
-            CREATE TABLE IF NOT EXISTS month_assets(
+            CREATE TABLE IF NOT EXISTS cohort_assets(
                 month DATE NOT NULL,
                 asset_id INTEGER NOT NULL,
                 account TEXT NOT NULL,
@@ -153,7 +153,7 @@ class DatabaseHandler:
                 purchased_amount REAL DEFAULT 0,
                 sold_amount REAL DEFAULT 0,
                 FOREIGN KEY (asset_id) REFERENCES assets (asset_id),
-                FOREIGN KEY (month, account) REFERENCES month_data (month, account),
+                FOREIGN KEY (month, account) REFERENCES cohort_data (month, account),
                 PRIMARY KEY(month, asset_id, account)
                 );""")
         
@@ -305,8 +305,8 @@ class DatabaseHandler:
 
         # Get total capital
         if "Capital" in stats:
-            # Take SUM of capital if there are any rows in month_data, otherwise set capital to 0
-            cursor.execute("SELECT CASE WHEN COUNT(*) > 0 THEN SUM(capital) ELSE 0 END FROM month_data")
+            # Take SUM of capital if there are any rows in cohort_data, otherwise set capital to 0
+            cursor.execute("SELECT CASE WHEN COUNT(*) > 0 THEN SUM(capital) ELSE 0 END FROM cohort_data")
             stat_value["Capital"] = cursor.fetchone()[0]
 
         # Get number of tables

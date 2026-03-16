@@ -34,7 +34,7 @@ def test_process_data__attribution_single_account(database_attribution_single_ac
     """
     Single account baseline: all gain correctly attributed to the deposit month.
 
-    Expected month_data:
+    Expected cohort_data:
       - One row: deposit=110, withdrawal=210, gain=100
       - No orphan rows (rows with withdrawal > 0 but deposit == 0)
     """
@@ -50,7 +50,7 @@ def test_process_data__attribution_single_account(database_attribution_single_ac
     cur = database_attribution_single_account.get_cursor()
 
     rows = cur.execute(
-        "SELECT month, account, deposit, capital, withdrawal FROM month_data ORDER BY month, account"
+        "SELECT month, account, deposit, capital, withdrawal FROM cohort_data ORDER BY month, account"
     ).fetchall()
 
     total_deposit = sum(r[2] for r in rows)
@@ -67,7 +67,7 @@ def test_process_data__attribution_two_accounts(database_attribution_two_account
     Two accounts: gain should be attributed to the original deposit month,
     regardless of the capital moving to a different account via internal transfer.
 
-    Expected month_data:
+    Expected cohort_data:
       - Total deposit = 110 SEK
       - Total withdrawal = 210 SEK
       - No orphan rows (rows with withdrawal > 0 but deposit == 0)
@@ -86,7 +86,7 @@ def test_process_data__attribution_two_accounts(database_attribution_two_account
     cur = database_attribution_two_accounts.get_cursor()
 
     rows = cur.execute(
-        "SELECT month, account, deposit, capital, withdrawal FROM month_data ORDER BY month, account"
+        "SELECT month, account, deposit, capital, withdrawal FROM cohort_data ORDER BY month, account"
     ).fetchall()
 
     total_deposit = sum(r[2] for r in rows)
