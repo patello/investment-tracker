@@ -487,8 +487,35 @@ class DataParser:
         self.data_cur.execute("UPDATE assets SET latest_price = ?, latest_price_date = ? WHERE asset_id = ?", (price, date, asset_id))
         remaining_amount = asset_amount
         month_asset_amounts = self.available_asset(asset_id, account)
+
         total_asset_amount = sum(e[1] for e in month_asset_amounts)
+        
+        # FIX: Check if we are selling an asset with 0 average purchase price (cost_basis=0)
+        # If so, retroactively inject the sale total_amount as a deposit in the month the shares were acquired
+        for (oldest_available, amount) in month_asset_amounts:
+            # Check if this cohort has 0 active base (deposit) for these shares
+            res = self.data_cur.execute(
+                "SELECT average_purchase_price FROM cohort_assets WHERE month = ? AND asset_id = ? AND account = ?",
+                (oldest_available, asset_id, account)
+            ).fetchone()
+            if res and res[0] == 0.0:
+                # Calculate the proportionate sale amount for these specific shares
+                proportionate_sale_amount = (amount / asset_amount) * total_amount if asset_amount > 0 else 0
+                if proportionate_sale_amount > 0:
+                    # Retroactively create a deposit in that month
+                    self.data_cur.execute(
+                        "UPDATE cohort_data SET deposit = deposit + ?, active_base = active_base + ? WHERE month = ? AND account = ?",
+                        (proportionate_sale_amount, proportionate_sale_amount, oldest_available, account)
+                    )
+                    # Update average purchase price so we don't trigger this again for a partial sale
+                    proportionate_price = proportionate_sale_amount / amount
+                    self.data_cur.execute(
+                        "UPDATE cohort_assets SET average_purchase_price = ? WHERE month = ? AND asset_id = ? AND account = ?",
+                        (proportionate_price, oldest_available, asset_id, account)
+                    )
+
         if total_asset_amount + 1e-3 >= asset_amount:
+
             i = 0
             while remaining_amount > 1e-3:
                 (oldest_available,amount) = month_asset_amounts[i]
