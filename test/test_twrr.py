@@ -40,7 +40,7 @@ def test_twrr_active_base_tracking(twrr_scenario_db):
     cur = twrr_scenario_db.get_cursor()
 
     rows = cur.execute(
-        "SELECT month, deposit, active_base, capital FROM month_data ORDER BY month"
+        "SELECT month, deposit, active_base, capital FROM cohort_data ORDER BY month"
     ).fetchall()
 
     assert len(rows) == 1
@@ -59,7 +59,7 @@ def test_twrr_closed_return_snapshot(twrr_scenario_db):
     cur = twrr_scenario_db.get_cursor()
     
     # closed_return should be NULL since position is still open (50 shares remain)
-    row = cur.execute("SELECT closed_return FROM month_data").fetchone()
+    row = cur.execute("SELECT closed_return FROM cohort_data").fetchone()
     assert row[0] is None, "Open position should not have closed_return"
 
 
@@ -97,7 +97,7 @@ def test_twrr_closed_position_has_return(twrr_closed_db):
     twrr_closed_db.connect()
     cur = twrr_closed_db.get_cursor()
     
-    row = cur.execute("SELECT closed_return FROM month_data").fetchone()
+    row = cur.execute("SELECT closed_return FROM cohort_data").fetchone()
     assert row[0] is not None, "Closed position should have closed_return"
     assert abs(row[0] - 2.0) < 0.1, f"Expected closed_return ~2.0, got {row[0]}"
     

@@ -2,7 +2,7 @@
 Test per-account asset tracking implementation.
 
 These tests verify:
-1. Assets are tracked per account in month_assets table
+1. Assets are tracked per account in cohort_assets table
 2. Sales can only sell assets owned by the account
 3. Savings accounts don't get attributed assets they never purchased
 4. Assets are correctly associated with the purchasing account
@@ -112,10 +112,10 @@ def test_assets_correctly_attributed_to_purchasing_account(database_basic_two_ac
     """)
     purchases = cur.fetchall()
     
-    # Get asset holdings from month_assets
+    # Get asset holdings from cohort_assets
     cur.execute("""
         SELECT ma.account, a.asset, SUM(ma.amount) as held_amount
-        FROM month_assets ma
+        FROM cohort_assets ma
         JOIN assets a ON ma.asset_id = a.asset_id
         WHERE ma.amount > 0
         GROUP BY ma.account, a.asset
@@ -137,7 +137,7 @@ def test_assets_correctly_attributed_to_purchasing_account(database_basic_two_ac
 
 def test_assets_tracked_per_account(database_basic_two_accounts):
     """
-    Test that assets are tracked per account in month_assets.
+    Test that assets are tracked per account in cohort_assets.
     """
     db = database_basic_two_accounts
     db.connect()
@@ -147,9 +147,9 @@ def test_assets_tracked_per_account(database_basic_two_accounts):
     parser = DataParser(db)
     parser.process_transactions()
 
-    # Check month_assets table - should include account column
-    cur.execute("SELECT month, asset_id, account, amount FROM month_assets ORDER BY month, asset_id, account")
-    month_assets = cur.fetchall()
+    # Check cohort_assets table - should include account column
+    cur.execute("SELECT month, asset_id, account, amount FROM cohort_assets ORDER BY month, asset_id, account")
+    cohort_assets = cur.fetchall()
 
     # Get asset names for readability
     cur.execute("SELECT asset_id, asset FROM assets ORDER BY asset_id")
@@ -157,16 +157,16 @@ def test_assets_tracked_per_account(database_basic_two_accounts):
 
     # We have 2 assets purchased by different accounts
     # Should have 2 entries with account information
-    assert len(month_assets) == 2, "Should have 2 asset entries (one per asset per account)"
+    assert len(cohort_assets) == 2, "Should have 2 asset entries (one per asset per account)"
 
-    # Check that assets in month_assets include account info
-    for month, asset_id, account, amount in month_assets:
+    # Check that assets in cohort_assets include account info
+    for month, asset_id, account, amount in cohort_assets:
         asset_name = asset_map[asset_id]
-        print(f"Asset in month_assets: {month}, {asset_name}, Account: {account}, {amount} shares")
+        print(f"Asset in cohort_assets: {month}, {asset_name}, Account: {account}, {amount} shares")
 
     # Verify each asset is associated with the correct account
     asset_accounts = {}
-    for month, asset_id, account, amount in month_assets:
+    for month, asset_id, account, amount in cohort_assets:
         asset_name = asset_map[asset_id]
         asset_accounts[asset_name] = account
     
@@ -201,7 +201,7 @@ def test_accounts_only_hold_assets_they_purchased(database_savings_account_scena
     # Get all asset holdings by account
     cur.execute("""
         SELECT ma.account, a.asset, SUM(ma.amount) as held_amount
-        FROM month_assets ma
+        FROM cohort_assets ma
         JOIN assets a ON ma.asset_id = a.asset_id
         WHERE ma.amount > 0
         GROUP BY ma.account, a.asset

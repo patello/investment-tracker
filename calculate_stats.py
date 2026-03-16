@@ -80,14 +80,14 @@ class StatCalculator:
             cur.execute(f"DROP TABLE IF EXISTS {table}")
         
         # Check if per-account tables exist
-        cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='account_month_stats'")
+        cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='account_cohort_stats'")
         if cur.fetchone():
             # Tables exist
             return
         
-        # Create account_month_stats
+        # Create account_cohort_stats
         cur.execute("""
-            CREATE TABLE account_month_stats (
+            CREATE TABLE account_cohort_stats (
                 account TEXT NOT NULL,
                 month DATE NOT NULL,
                 deposit REAL,
@@ -135,8 +135,8 @@ class StatCalculator:
         
         self.db.commit()
         # Ensure updated table state exists locally to prevent KeyError exceptions
-        if 'account_month_stats' not in self.db.tables:
-            self.db.tables.extend(['account_month_stats', 'account_year_stats'])
+        if 'account_cohort_stats' not in self.db.tables:
+            self.db.tables.extend(['account_cohort_stats', 'account_year_stats'])
         logging.info("Created per-account statistics tables (dropped old global tables)")
     
     def _drop_old_tables(self):
@@ -227,7 +227,7 @@ class StatCalculator:
         if apy_mode == 'twrr':
             cur.execute(f"""
                 SELECT SUM(active_base)
-                FROM month_data
+                FROM cohort_data
                 WHERE month = ? AND account IN ({placeholders})
             """, (month_str,) + tuple(accounts))
             ab_row = cur.fetchone()
@@ -242,7 +242,7 @@ class StatCalculator:
             # Check for closed positions with snapshot
             cur.execute(f"""
                 SELECT SUM(deposit * closed_return), SUM(deposit)
-                FROM month_data
+                FROM cohort_data
                 WHERE month = ? AND account IN ({placeholders}) AND closed_return IS NOT NULL
             """, (month_str,) + tuple(accounts))
             cr_row = cur.fetchone()
@@ -281,7 +281,7 @@ class StatCalculator:
         if apy_mode == 'twrr':
             cur.execute(f"""
                 SELECT SUM(active_base)
-                FROM month_data
+                FROM cohort_data
                 WHERE strftime('%Y', month) = ? AND account IN ({placeholders})
             """, (year_str,) + tuple(accounts))
             ab_row = cur.fetchone()
@@ -296,7 +296,7 @@ class StatCalculator:
             # Check for closed positions with snapshot
             cur.execute(f"""
                 SELECT SUM(deposit * closed_return), SUM(deposit)
-                FROM month_data
+                FROM cohort_data
                 WHERE strftime('%Y', month) = ? AND account IN ({placeholders}) AND closed_return IS NOT NULL
             """, (year_str,) + tuple(accounts))
             cr_row = cur.fetchone()
@@ -328,7 +328,7 @@ class StatCalculator:
     def calculate_month_stats(self, apy_mode='modified-dietz'):
         """
         Calculate monthly stats such as capital transfers and gain/loss.
-        Stores results in account_month_stats table (per account).
+        Stores results in account_cohort_stats table (per account).
         
         Parameters:
         apy_mode (str): 'modified-dietz' or 'twrr'
@@ -336,15 +336,15 @@ class StatCalculator:
         self._ensure_per_account_tables()
         self.db.connect()
         
-        # Reset account_month_stats table
-        self.db.reset_table("account_month_stats")
+        # Reset account_cohort_stats table
+        self.db.reset_table("account_cohort_stats")
         
         cur = self.db.get_cursor()
         today = datetime.today().date()
         
         # Get all accounts
         accounts = [row[0] for row in cur.execute(
-            "SELECT DISTINCT account FROM month_data ORDER BY account"
+            "SELECT DISTINCT account FROM cohort_data ORDER BY account"
         ).fetchall()]
         
         logging.info(f"Calculating monthly stats for {len(accounts)} accounts")
@@ -353,7 +353,7 @@ class StatCalculator:
             # Get all months for this account in chronological order
             cur.execute("""
                 SELECT month, deposit, withdrawal, capital, active_base, closed_return
-                FROM month_data
+                FROM cohort_data
                 WHERE account = ?
                 ORDER BY month ASC
             """, (account,))
@@ -380,7 +380,7 @@ class StatCalculator:
                 # Get asset holdings for this account in this month
                 cur.execute("""
                     SELECT ma.asset_id, ma.amount, a.latest_price
-                    FROM month_assets ma
+                    FROM cohort_assets ma
                     JOIN assets a ON ma.asset_id = a.asset_id
                     WHERE ma.account = ? AND ma.month = ? AND ma.amount > 0.001
                     AND a.latest_price IS NOT NULL
@@ -446,7 +446,7 @@ class StatCalculator:
                 
                 # Insert into per-account table
                 cur.execute("""
-                    INSERT INTO account_month_stats (
+                    INSERT INTO account_cohort_stats (
                         account, month, deposit, withdrawal, value,
                         total_gainloss, realized_gainloss, unrealized_gainloss,
                         total_gainloss_per, realized_gainloss_per, unrealized_gainloss_per,
@@ -483,7 +483,7 @@ class StatCalculator:
         
         # Get all accounts
         accounts = [row[0] for row in cur.execute(
-            "SELECT DISTINCT account FROM account_month_stats ORDER BY account"
+            "SELECT DISTINCT account FROM account_cohort_stats ORDER BY account"
         ).fetchall()]
         
         logging.info(f"Calculating yearly stats for {len(accounts)} accounts")
@@ -492,7 +492,7 @@ class StatCalculator:
             # Get all years for this account
             cur.execute("""
                 SELECT DISTINCT strftime('%Y', month) as year
-                FROM account_month_stats
+                FROM account_cohort_stats
                 WHERE account = ?
                 ORDER BY year
             """, (account,))
@@ -502,7 +502,7 @@ class StatCalculator:
                 # Sum cohort deposits, withdrawals, and cash capital for the entire year
                 cur.execute("""
                     SELECT SUM(deposit), SUM(withdrawal), SUM(capital), SUM(active_base)
-                    FROM month_data
+                    FROM cohort_data
                     WHERE account = ? AND strftime('%Y', month) = ?
                 """, (account, year_str))
                 dep_row = cur.fetchone()
@@ -514,7 +514,7 @@ class StatCalculator:
                 # Get deposit-weighted closed_return for closed cohorts in this year
                 cur.execute("""
                     SELECT SUM(deposit * closed_return), SUM(deposit)
-                    FROM month_data
+                    FROM cohort_data
                     WHERE account = ? AND strftime('%Y', month) = ? AND closed_return IS NOT NULL
                 """, (account, year_str))
                 cr_row = cur.fetchone()
@@ -526,7 +526,7 @@ class StatCalculator:
                 # Sum cohort asset holdings for the entire year
                 cur.execute("""
                     SELECT ma.asset_id, SUM(ma.amount), a.latest_price
-                    FROM month_assets ma
+                    FROM cohort_assets ma
                     JOIN assets a ON ma.asset_id = a.asset_id
                     WHERE ma.account = ? AND strftime('%Y', ma.month) = ? AND ma.amount > 0.001
                     AND a.latest_price IS NOT NULL
@@ -562,7 +562,7 @@ class StatCalculator:
                 # Get last month of the year for accumulated values
                 cur.execute("""
                     SELECT acc_net_deposit, acc_deposit, acc_value, acc_unrealized_gainloss, acc_total_gainloss
-                    FROM account_month_stats
+                    FROM account_cohort_stats
                     WHERE account = ? AND strftime('%Y', month) = ?
                     ORDER BY month DESC
                     LIMIT 1
@@ -663,7 +663,7 @@ class StatCalculator:
         # If no accounts specified, use all accounts (global view)
         if accounts is None:
             accounts = [row[0] for row in cur.execute(
-                "SELECT DISTINCT account FROM account_month_stats ORDER BY account"
+                "SELECT DISTINCT account FROM account_cohort_stats ORDER BY account"
             ).fetchall()]
         
         # Single account - direct query from cached tables
@@ -675,7 +675,7 @@ class StatCalculator:
                            total_gainloss, realized_gainloss, unrealized_gainloss,
                            total_gainloss_per, realized_gainloss_per, unrealized_gainloss_per,
                            annual_per_yield
-                    FROM account_month_stats
+                    FROM account_cohort_stats
                     WHERE account = ?
                     ORDER BY month
                 """
@@ -717,7 +717,7 @@ class StatCalculator:
                        SUM(total_gainloss) as total_gainloss,
                        SUM(realized_gainloss) as realized_gainloss,
                        SUM(unrealized_gainloss) as unrealized_gainloss
-                FROM account_month_stats
+                FROM account_cohort_stats
                 WHERE account IN ({placeholders})
                 GROUP BY month
                 ORDER BY month
@@ -846,7 +846,7 @@ class StatCalculator:
         # If no accounts specified, use all accounts
         if accounts is None:
             accounts = [row[0] for row in cur.execute(
-                "SELECT DISTINCT account FROM account_month_stats ORDER BY account"
+                "SELECT DISTINCT account FROM account_cohort_stats ORDER BY account"
             ).fetchall()]
         
         deposit_col = "acc_deposit" if deposits == "all" else "acc_net_deposit"
@@ -858,7 +858,7 @@ class StatCalculator:
             if period == "month":
                 query = f"""
                     SELECT month, {deposit_col}, acc_value, {gainloss_col}
-                    FROM account_month_stats
+                    FROM account_cohort_stats
                     WHERE account = ?
                     ORDER BY month
                 """
@@ -888,7 +888,7 @@ class StatCalculator:
         if period == "month":
             query = f"""
                 SELECT month, account, {deposit_col}, acc_value, {gainloss_col}
-                FROM account_month_stats
+                FROM account_cohort_stats
                 WHERE account IN ({placeholders})
                 ORDER BY month
             """
@@ -1082,20 +1082,20 @@ class StatCalculator:
         # If no accounts specified, use all accounts
         if accounts is None:
             accounts = [row[0] for row in cur.execute(
-                "SELECT DISTINCT account FROM month_data ORDER BY account"
+                "SELECT DISTINCT account FROM cohort_data ORDER BY account"
             ).fetchall()]
         
         summaries = []
         for account in accounts:
             # Get TOTAL cash balance for this account across ALL months (cohorts)
-            cur.execute("SELECT SUM(capital) FROM month_data WHERE account = ?", (account,))
+            cur.execute("SELECT SUM(capital) FROM cohort_data WHERE account = ?", (account,))
             cash_row = cur.fetchone()
             cash = cash_row[0] if cash_row and cash_row[0] else 0.0
             
             # Get TOTAL asset holdings for this account across ALL months (cohorts)
             cur.execute("""
                 SELECT SUM(ma.amount * a.latest_price)
-                FROM month_assets ma
+                FROM cohort_assets ma
                 JOIN assets a ON ma.asset_id = a.asset_id
                 WHERE ma.account = ? AND ma.amount > 0.001
                 AND a.latest_price IS NOT NULL

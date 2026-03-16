@@ -53,13 +53,13 @@ def test_process_data__transfer_deferral(database_transfer_deferral):
     cur = database_transfer_deferral.get_cursor()
 
     capital_1111 = cur.execute(
-        "SELECT SUM(capital) FROM month_data WHERE account = '1111'"
+        "SELECT SUM(capital) FROM cohort_data WHERE account = '1111'"
     ).fetchone()[0] or 0.0
     capital_2222 = cur.execute(
-        "SELECT SUM(capital) FROM month_data WHERE account = '2222'"
+        "SELECT SUM(capital) FROM cohort_data WHERE account = '2222'"
     ).fetchone()[0] or 0.0
     asset_amount = cur.execute(
-        "SELECT COALESCE(SUM(amount), 0) FROM month_assets"
+        "SELECT COALESCE(SUM(amount), 0) FROM cohort_assets"
     ).fetchone()[0]
 
     assert abs(capital_1111 - 25.0) < 0.01, f"Account 1111 capital should be 25, got {capital_1111}"
@@ -84,13 +84,13 @@ def test_process_data__transfer_proper_order(database_transfer_proper_order):
     cur = database_transfer_proper_order.get_cursor()
 
     capital_1111 = cur.execute(
-        "SELECT SUM(capital) FROM month_data WHERE account = '1111'"
+        "SELECT SUM(capital) FROM cohort_data WHERE account = '1111'"
     ).fetchone()[0] or 0.0
     capital_2222 = cur.execute(
-        "SELECT SUM(capital) FROM month_data WHERE account = '2222'"
+        "SELECT SUM(capital) FROM cohort_data WHERE account = '2222'"
     ).fetchone()[0] or 0.0
     asset_amount = cur.execute(
-        "SELECT COALESCE(SUM(amount), 0) FROM month_assets"
+        "SELECT COALESCE(SUM(amount), 0) FROM cohort_assets"
     ).fetchone()[0]
 
     assert abs(capital_1111 - 25.0) < 0.01, f"Account 1111 capital should be 25, got {capital_1111}"
