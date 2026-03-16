@@ -214,7 +214,7 @@ def stats(args):
     if args.force or apy_mode_changed or stats_need_recalculation(db):
         try:
             stat_calc = StatCalculator(db)
-            stat_calc.calculate_month_stats(apy_mode=apy_mode)
+            stat_calc.calculate_cohort_stats(apy_mode=apy_mode)
             stat_calc.calculate_year_stats(apy_mode=apy_mode)
             
             # Update metadata

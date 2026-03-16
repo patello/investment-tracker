@@ -164,9 +164,9 @@ class DatabaseHandler:
                 value TEXT
                 );""")
         
-        # month_stats contains statistics about capital transfers and gain/loss for each month
+        # cohort_stats contains statistics about capital transfers and gain/loss for each month
         cursor.execute("""
-            CREATE TABLE IF NOT EXISTS month_stats(
+            CREATE TABLE IF NOT EXISTS cohort_stats(
                 month DATE NOT NULL,
                 deposit REAL DEFAULT 0,
                 withdrawal REAL DEFAULT 0,

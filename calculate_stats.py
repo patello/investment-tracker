@@ -75,7 +75,7 @@ class StatCalculator:
         cur = self.db.get_cursor()
         
         # Drop old global cached tables first
-        tables_to_drop = ['month_stats', 'year_stats']
+        tables_to_drop = ['cohort_stats', 'year_stats']
         for table in tables_to_drop:
             cur.execute(f"DROP TABLE IF EXISTS {table}")
         
@@ -144,7 +144,7 @@ class StatCalculator:
         self.db.connect()
         cur = self.db.get_cursor()
         
-        tables_to_drop = ['month_stats', 'year_stats']
+        tables_to_drop = ['cohort_stats', 'year_stats']
         for table in tables_to_drop:
             cur.execute(f"DROP TABLE IF EXISTS {table}")
         
@@ -325,7 +325,7 @@ class StatCalculator:
             deposit, total_gainloss, value, start_date, parsed_cfs, today)
         return self._annualize_hpr(hpr, total_days)
 
-    def calculate_month_stats(self, apy_mode='modified-dietz'):
+    def calculate_cohort_stats(self, apy_mode='modified-dietz'):
         """
         Calculate monthly stats such as capital transfers and gain/loss.
         Stores results in account_cohort_stats table (per account).
@@ -636,7 +636,7 @@ class StatCalculator:
         Parameters:
         apy_mode (str): 'modified-dietz' or 'twrr'
         """
-        self.calculate_month_stats(apy_mode=apy_mode)
+        self.calculate_cohort_stats(apy_mode=apy_mode)
         self.calculate_year_stats(apy_mode=apy_mode)
 
     def get_stats(self, accounts=None, period: str = "month", deposits: str = "current", apy_mode: str = "modified-dietz") -> list:
