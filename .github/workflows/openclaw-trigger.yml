@@ -28,10 +28,12 @@ jobs:
           fi
 
           # Dispatch request to OpenClaw
+          # Dispatch request to OpenClaw
           curl -X POST "${{ secrets.OPENCLAW_HOOKS_URL }}" \
             -H "Authorization: Bearer ${{ secrets.OPENCLAW_HOOK_TOKEN }}" \
             -H "Content-Type: application/json" \
             -d "{
-              \"source\": \"github-activity\",
-              \"message\": \"GitHub event: $EVENT_TYPE triggered by $ACTOR. Link: $TARGET_URL\"
-            }"
+              \"message\": \"GitHub event: $EVENT_TYPE triggered by $ACTOR. Link: $TARGET_URL\",
+              \"name\": \"GitHub Action\",
+              \"agentId\": \"${{ secrets.OPENCLAW_AGENT_ID }}\"            
+          }"
