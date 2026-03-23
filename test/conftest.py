@@ -1,3 +1,5 @@
+import sys
+sys.path.insert(0, "..")
 """
 Pytest configuration for private network tests.
 
