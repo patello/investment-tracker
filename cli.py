@@ -230,7 +230,12 @@ def stats(args):
     # Display statistics
     try:
         stat_calc = StatCalculator(db)
-        kwargs = {'period': args.period, 'deposits': args.deposits, 'apy_mode': apy_mode}
+        # Get default period if needed
+        period = args.period
+        if period == 'default':
+            period = db.get_metadata('default_stats_period') or 'month'
+
+        kwargs = {'period': period, 'deposits': args.deposits, 'apy_mode': apy_mode}
         
         # Add account filter if specified
         if accounts is not None:
@@ -307,6 +312,18 @@ def reset(args):
         logging.error(f"Failed to reset database: {e}")
         return 1
 
+
+def settings_default_stats_period(args):
+    """Set default period for stats command."""
+    db = get_db(args)
+    
+    period = args.period.strip().lower()
+    if period in ('month', 'year'):
+        db.set_metadata('default_stats_period', period)
+        logging.info(f"Default stats period set to '{period}'")
+    else:
+        logging.error("Invalid period: must be 'month' or 'year'")
+        return 1
 
 def settings_default_accounts(args):
     """Set default accounts for filtering."""
@@ -439,9 +456,9 @@ Examples:
     stats_parser = subparsers.add_parser('stats', help='Show statistics with smart updates')
     stats_parser.add_argument(
         '--period',
-        choices=['month', 'year'],
-        default='month',
-        help='Time period to show (default: month)'
+        choices=['default', 'month', 'year'],
+        default='default',
+        help='Time period to show (default)'
     )
     stats_parser.add_argument(
         '--deposits',
@@ -482,6 +499,11 @@ Examples:
     settings_parser = subparsers.add_parser('settings', help='Manage settings')
     settings_subparsers = settings_parser.add_subparsers(dest='settings_command', help='Settings command')
     
+    # Default stats period subcommand
+    default_stats_period_parser = settings_subparsers.add_parser('default-stats-period', help='Set default stats period')
+    default_stats_period_parser.add_argument('period', choices=['month', 'year'], help='Default period: "month" or "year"')
+    default_stats_period_parser.set_defaults(func=settings_default_stats_period)
+
     # Default accounts subcommand
     default_accounts_parser = settings_subparsers.add_parser('default-accounts', help='Set default accounts')
     default_accounts_parser.add_argument('accounts', help='Comma-separated list of account numbers, or "all" for all accounts')

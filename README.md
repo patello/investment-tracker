@@ -95,6 +95,15 @@ The new `stats` command includes intelligent caching and update logic:
 - **Force update**: `--update-prices always` forces price refresh
 - **Skip update**: `--update-prices never` uses cached prices
 - **Stats caching**: Statistics are recalculated only when needed (new transactions or price updates)
+- **Default period**: You can set a default stats cohort period.
+  ```bash
+  # Set default stats period
+  python cli.py settings default-stats-period year
+
+  # Use the default stats period
+  python cli.py stats
+  ```
+
 
 #### Account Filtering
 
