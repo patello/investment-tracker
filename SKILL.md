@@ -8,156 +8,153 @@ metadata: {"openclaw": {"requires": {"bins": ["python3"]}}}
 
 Process investment CSV exports and calculate portfolio performance metrics (TWRR, Modified Dietz).
 
+## Working Directory
+
+**CRITICAL:** All commands must be run from the skill ROOT directory (where SKILL.md is located).
+
+The skill expects this structure:
+```
+.
+├── SKILL.md              # You are here
+├── scripts/              # Python executables
+│   ├── cli.py
+│   ├── data_parser.py
+│   ├── database_handler.py
+│   └── calculate_stats.py
+└── data/                 # Runtime data (CREATED BY YOU)
+    ├── asset_data.db     # SQLite database (auto-created)
+    └── special_cases.json # Config file (copy from template)
+```
+
 ## Quick Start
 
 ### 1. Install Dependencies
+From skill root:
 ```bash
 pip install -r requirements.txt
 ```
 
-### 2. Create Required Directories and Files
-**CRITICAL:** All persistent data MUST be stored in `scripts/data/` directory. This is where the database and config files live.
-
+### 2. Create Data Directory
+Create `data/` at the skill root (same level as `scripts/`):
 ```bash
-cd scripts
 mkdir -p data
-# Create special cases config (or copy from template)
-cp ../assets/special_cases_template.json data/special_cases.json
+cp assets/special_cases_template.json data/special_cases.json
 ```
-**Data Storage Rules:**
-- **Database:** Store at `scripts/data/asset_data.db` (auto-created on first run if using default)
-- **Config:** Store `special_cases.json` at `scripts/data/special_cases.json`
-- **Input CSVs:** Can be anywhere, but processed data always goes to the database
-- **DO NOT** store data outside `scripts/data/` - this keeps everything contained
 
 ### 3. Import Transaction Data
-Place your CSV export from Avanza (or compatible broker) in the data directory, then run:
+Place your CSV export in `data/`, then from skill root run:
 ```bash
-cd scripts
-python cli.py import ../data/your_transactions.csv
+python scripts/cli.py import data/your_transactions.csv
 ```
 
-### 4. Calculate Performance Statistics
+### 4. Calculate Statistics
 ```bash
-python cli.py stats --update-prices auto
+python scripts/cli.py stats --update-prices auto
 ```
 
-### 5. View Account Status
+### 5. View Status
 ```bash
-python cli.py accounts
-python cli.py status
+python scripts/cli.py accounts
+python scripts/cli.py status
 ```
 
 ## CLI Commands Reference
 
-All commands assume execution from the `scripts/` directory.
+**Working Directory:** Skill root (where SKILL.md lives)
 
 ### Import Data
-**Command:** `python cli.py import <csv_file> [options]`
-
-**Example:**
 ```bash
-python cli.py import ../data/avanza_export.csv --database ../data/portfolio.db
+python scripts/cli.py import data/transactions.csv
 ```
 
-**Options:**
-- `--database PATH` - SQLite database file (default: data/asset_data.db)
-- `--special-cases PATH` - JSON file for handling corporate actions (default: data/special_cases.json)
+**Default Paths (relative to skill root):**
+- Database: `data/asset_data.db`
+- Special cases: `data/special_cases.json`
 
 ### Calculate Statistics
-**Command:** `python cli.py stats [options]`
-
-**Examples:**
 ```bash
-python cli.py stats                    # Show current stats
-python cli.py stats --update-prices auto  # Update prices and calculate
-python cli.py stats --from-date 2024-01-01  # Stats from specific date
+python scripts/cli.py stats
+python scripts/cli.py stats --update-prices auto
 ```
 
-**Options:**
-- `--update-prices {yes,no,auto}` - Fetch current prices before calculation
-- `--from-date YYYY-MM-DD` - Start date for calculations
-- `--to-date YYYY-MM-DD` - End date for calculations
-
 ### Show Accounts
-**Command:** `python cli.py accounts [options]`
-
-Displays account summaries including asset values and cash positions.
-
-**Examples:**
 ```bash
-python cli.py accounts
-python cli.py accounts --database ../data/portfolio.db
+python scripts/cli.py accounts
 ```
 
 ### Check Status
-**Command:** `python cli.py status`
-
-Shows system status including database info and cached data.
+```bash
+python scripts/cli.py status
+```
 
 ### Reset Database
-**Command:** `python cli.py reset`
-
-**WARNING:** This clears all data from the database. Use with caution.
-
-**Example:**
 ```bash
-python cli.py reset --confirm
+python scripts/cli.py reset --confirm
 ```
+
+## Data Storage Rules
+
+**DO:**
+- Store all data in `data/` at skill root
+- Keep input CSVs in `data/`
+- Store database at `data/asset_data.db`
+- Store config at `data/special_cases.json`
+
+**DON'T:**
+- Store data in `scripts/` directory
+- Store data outside the skill folder
+- Modify files in `assets/` (templates only)
 
 ## File Structure
 
-### Skill Files (version-controlled)
+### Skill Files (do not modify)
 ```
 .
-├── SKILL.md                       # This file
-├── requirements.txt               # Python dependencies
-├── .gitignore                     # Git ignore rules
-├── assets/
-│   └── special_cases_template.json   # Template for corporate actions
-└── scripts/                       # Main executables
-    ├── cli.py                     # CLI entry point
-    ├── database_handler.py        # SQLite database management
-    ├── data_parser.py             # CSV parsing and transaction processing
-    └── calculate_stats.py         # TWRR and Modified Dietz calculations
+├── SKILL.md              # This documentation
+├── requirements.txt      # Python dependencies
+├── .gitignore           # Git ignore rules
+├── assets/              # Templates
+│   └── special_cases_template.json
+└── scripts/             # Python code
+    ├── cli.py
+    ├── database_handler.py
+    ├── data_parser.py
+    └── calculate_stats.py
 ```
 
-### Runtime Data (CREATED ON FIRST RUN - do not commit)
-All persistent data is stored under `scripts/data/`:
-
+### Runtime Data (you create this)
 ```
-scripts/
-└── data/                          # Runtime data directory
-    ├── asset_data.db              # SQLite database (created on first import)
-    └── special_cases.json         # Corporate actions configuration (copy from template)
+data/                    # Create this directory
+├── asset_data.db        # SQLite database (auto-created on import)
+├── special_cases.json   # Copy from assets/template
+└── *.csv                # Your transaction exports
 ```
-
-**Agent Note:** When setting up this skill, ALWAYS ensure `scripts/data/` exists and store all database/config files there.
 
 ## Special Cases Configuration
 
-Some transactions require manual handling (stock splits, spin-offs, ticker changes).
+Some transactions need manual rules (splits, spin-offs, ticker changes):
 
-1. Copy the template: `cp assets/special_cases_template.json data/special_cases.json`
-2. Edit `data/special_cases.json` to define special handling rules
-3. The parser will reference this file when processing ambiguous transactions
+1. Copy template: `cp assets/special_cases_template.json data/special_cases.json`
+2. Edit `data/special_cases.json` with your rules
+3. The parser reads this automatically
 
 ## Dependencies
 
-From `requirements.txt`:
-- `requests` - For fetching current stock prices
-- Standard library: `sqlite3`, `csv`, `json`, `datetime`, `argparse`
+- `requests` - Fetch stock prices
+- Standard library: `sqlite3`, `csv`, `json`, `datetime`, `argparse`, `logging`
 
-## Workflow for New Portfolio
+## Complete Workflow
 
-1. **Setup:** Install deps, create directories, copy special cases template
-2. **First Import:** `python cli.py import data/export.csv`
-3. **Review:** `python cli.py status` - verify accounts and transactions
-4. **Calculate:** `python cli.py stats --update-prices yes`
-5. **Ongoing:** Import new CSV files periodically, then recalculate stats
+1. **Setup:** `pip install -r requirements.txt && mkdir -p data`
+2. **Configure:** `cp assets/special_cases_template.json data/special_cases.json`
+3. **Import:** Place CSV in `data/`, then `python scripts/cli.py import data/file.csv`
+4. **Review:** `python scripts/cli.py status`
+5. **Calculate:** `python scripts/cli.py stats --update-prices auto`
+6. **Repeat:** Add new CSVs periodically, re-run import + stats
 
 ## Troubleshooting
 
-- **Database locked:** Ensure no other process is using the .db file
-- **Import errors:** Check CSV format matches Avanza export format
-- **Missing prices:** `--update-prices auto` uses external API; check network
+- **"No such file or directory":** Are you in skill root? Check with `ls SKILL.md`
+- **Database locked:** Close any database viewers
+- **Import fails:** Check CSV format matches Avanza export
+- **Missing prices:** Check internet connection for price fetching
