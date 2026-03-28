@@ -1,6 +1,7 @@
 ---
-name: investment-tracker
-description: A toolset to track investments and parse stock transactions using Avanza and other broker CSV exports. Use this skill when you need to calculate Time-Weighted Return (TWRR), Modified Dietz returns, or process transaction CSV data into a sqlite database.
+name: avanza-investment-tracker
+description: "A toolset to track investments and parse stock transactions using Avanza and other broker CSV exports. Use this skill when you need to calculate Time-Weighted Return (TWRR), Modified Dietz returns, or process transaction CSV data into a sqlite database."
+metadata: {"openclaw": {"requires": {"bins": ["python3"]}}}
 ---
 
 # Investment Tracker
