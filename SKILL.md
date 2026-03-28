@@ -1,160 +1,89 @@
 ---
 name: avanza-investment-tracker
-description: "A toolset to track investments and parse stock transactions using Avanza and other broker CSV exports. Use this skill when you need to calculate Time-Weighted Return (TWRR), Modified Dietz returns, or process transaction CSV data into a sqlite database."
-metadata: {"openclaw": {"requires": {"bins": ["python3"]}}}
+description: "Process Avanza CSV exports, calculate TWRR/Modified Dietz returns, and track portfolio performance. Use when importing stock transactions, calculating investment returns, or managing portfolio data."
 ---
 
 # Avanza Investment Tracker
 
-Process investment CSV exports and calculate portfolio performance metrics (TWRR, Modified Dietz).
-
-## Working Directory
-
-**CRITICAL:** All commands must be run from the skill ROOT directory (where SKILL.md is located).
-
-The skill expects this structure:
-```
-.
-├── SKILL.md              # You are here
-├── scripts/              # Python executables
-│   ├── cli.py
-│   ├── data_parser.py
-│   ├── database_handler.py
-│   └── calculate_stats.py
-└── data/                 # Runtime data (CREATED BY YOU)
-    ├── asset_data.db     # SQLite database (auto-created)
-    └── special_cases.json # Config file (copy from template)
-```
+Parse transaction CSVs and compute portfolio performance metrics.
 
 ## Quick Start
 
-### 1. Install Dependencies
-From skill root:
-```bash
-pip install -r requirements.txt
-```
+Work from skill root (where SKILL.md is located):
 
-### 2. Create Data Directory
-Create `data/` at the skill root (same level as `scripts/`):
 ```bash
+# 1. Create data directory at skill root
 mkdir -p data
+
+# 2. Copy template for special cases handling
 cp assets/special_cases_template.json data/special_cases.json
-```
 
-### 3. Import Transaction Data
-Place your CSV export in `data/`, then from skill root run:
-```bash
-python scripts/cli.py import data/your_transactions.csv
-```
-
-### 4. Calculate Statistics
-```bash
-python scripts/cli.py stats --update-prices auto
-```
-
-### 5. View Status
-```bash
-python scripts/cli.py accounts
-python scripts/cli.py status
-```
-
-## CLI Commands Reference
-
-**Working Directory:** Skill root (where SKILL.md lives)
-
-### Import Data
-```bash
+# 3. Import your CSV (place it in data/ first)
 python scripts/cli.py import data/transactions.csv
-```
 
-**Default Paths (relative to skill root):**
-- Database: `data/asset_data.db`
-- Special cases: `data/special_cases.json`
-
-### Calculate Statistics
-```bash
-python scripts/cli.py stats
+# 4. Calculate stats
 python scripts/cli.py stats --update-prices auto
 ```
 
-### Show Accounts
-```bash
-python scripts/cli.py accounts
-```
+## Data Storage
 
-### Check Status
-```bash
-python scripts/cli.py status
-```
+**CREATE THIS DIRECTORY:** `data/` at skill root (same level as `scripts/`)
 
-### Reset Database
-```bash
-python scripts/cli.py reset --confirm
-```
+Store runtime files here:
+- `data/asset_data.db` - SQLite database (auto-created on first import)
+- `data/special_cases.json` - Corporate actions config (copy from assets/)
+- `data/*.csv` - Your transaction exports
 
-## Data Storage Rules
+**DO NOT** store data in `scripts/` - it gets packaged with the skill.
 
-**DO:**
-- Store all data in `data/` at skill root
-- Keep input CSVs in `data/`
-- Store database at `data/asset_data.db`
-- Store config at `data/special_cases.json`
+## CLI Reference
 
-**DON'T:**
-- Store data in `scripts/` directory
-- Store data outside the skill folder
-- Modify files in `assets/` (templates only)
+Run all commands from skill root:
+
+| Command | Description |
+|---------|-------------|
+| `python scripts/cli.py import data/file.csv` | Import transactions from CSV |
+| `python scripts/cli.py stats` | Show performance stats |
+| `python scripts/cli.py stats --update-prices auto` | Update prices, then show stats |
+| `python scripts/cli.py accounts` | Show account summaries |
+| `python scripts/cli.py status` | Check system status |
+| `python scripts/cli.py reset --confirm` | Clear database (DESTRUCTIVE) |
 
 ## File Structure
 
-### Skill Files (do not modify)
 ```
 .
-├── SKILL.md              # This documentation
-├── requirements.txt      # Python dependencies
-├── .gitignore           # Git ignore rules
-├── assets/              # Templates
+├── SKILL.md              # This file
+├── requirements.txt      # pip dependencies
+├── assets/               # Templates and boilerplate
 │   └── special_cases_template.json
-└── scripts/             # Python code
-    ├── cli.py
-    ├── database_handler.py
-    ├── data_parser.py
-    └── calculate_stats.py
+├── scripts/              # Python code
+│   ├── cli.py           # Main CLI entry
+│   ├── data_parser.py
+│   ├── database_handler.py
+│   └── calculate_stats.py
+└── data/                # YOUR DATA (create this)
+    ├── asset_data.db
+    ├── special_cases.json
+    └── *.csv
 ```
-
-### Runtime Data (you create this)
-```
-data/                    # Create this directory
-├── asset_data.db        # SQLite database (auto-created on import)
-├── special_cases.json   # Copy from assets/template
-└── *.csv                # Your transaction exports
-```
-
-## Special Cases Configuration
-
-Some transactions need manual rules (splits, spin-offs, ticker changes):
-
-1. Copy template: `cp assets/special_cases_template.json data/special_cases.json`
-2. Edit `data/special_cases.json` with your rules
-3. The parser reads this automatically
 
 ## Dependencies
 
-- `requests` - Fetch stock prices
-- Standard library: `sqlite3`, `csv`, `json`, `datetime`, `argparse`, `logging`
+- `requests` - For fetching stock prices
+- Standard library: `sqlite3`, `csv`, `json`, `datetime`, `argparse`
 
-## Complete Workflow
+Install: `pip install -r requirements.txt`
 
-1. **Setup:** `pip install -r requirements.txt && mkdir -p data`
-2. **Configure:** `cp assets/special_cases_template.json data/special_cases.json`
-3. **Import:** Place CSV in `data/`, then `python scripts/cli.py import data/file.csv`
-4. **Review:** `python scripts/cli.py status`
-5. **Calculate:** `python scripts/cli.py stats --update-prices auto`
-6. **Repeat:** Add new CSVs periodically, re-run import + stats
+## Special Cases
 
-## Troubleshooting
+Corporate actions (splits, spin-offs) may need manual rules:
 
-- **"No such file or directory":** Are you in skill root? Check with `ls SKILL.md`
-- **Database locked:** Close any database viewers
-- **Import fails:** Check CSV format matches Avanza export
-- **Missing prices:** Check internet connection for price fetching
+1. Copy template: `cp assets/special_cases_template.json data/special_cases.json`
+2. Edit `data/special_cases.json` with your rules
+3. Re-import if needed - parser reads this automatically
+
+## See Also
+
+- **Detailed workflows**: See [references/workflows.md](references/workflows.md)
+- **Troubleshooting**: See [references/troubleshooting.md](references/troubleshooting.md)
