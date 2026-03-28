@@ -16,11 +16,19 @@ pip install -r requirements.txt
 ```
 
 ### 2. Create Required Directories and Files
+**CRITICAL:** All persistent data MUST be stored in `scripts/data/` directory. This is where the database and config files live.
+
 ```bash
+cd scripts
 mkdir -p data
 # Create special cases config (or copy from template)
-cp assets/special_cases_template.json data/special_cases.json
+cp ../assets/special_cases_template.json data/special_cases.json
 ```
+**Data Storage Rules:**
+- **Database:** Store at `scripts/data/asset_data.db` (auto-created on first run if using default)
+- **Config:** Store `special_cases.json` at `scripts/data/special_cases.json`
+- **Input CSVs:** Can be anywhere, but processed data always goes to the database
+- **DO NOT** store data outside `scripts/data/` - this keeps everything contained
 
 ### 3. Import Transaction Data
 Place your CSV export from Avanza (or compatible broker) in the data directory, then run:
@@ -99,10 +107,10 @@ python cli.py reset --confirm
 
 ## File Structure
 
+### Skill Files (version-controlled)
 ```
 .
 ├── SKILL.md                       # This file
-├── LICENSE                        # MIT-0 License
 ├── requirements.txt               # Python dependencies
 ├── .gitignore                     # Git ignore rules
 ├── assets/
@@ -111,11 +119,20 @@ python cli.py reset --confirm
     ├── cli.py                     # CLI entry point
     ├── database_handler.py        # SQLite database management
     ├── data_parser.py             # CSV parsing and transaction processing
-    ├── calculate_stats.py         # TWRR and Modified Dietz calculations
-    └── data/                      # Runtime data directory (not versioned)
-        ├── asset_data.db          # SQLite database (created on first run)
-        └── special_cases.json     # Corporate actions configuration
+    └── calculate_stats.py         # TWRR and Modified Dietz calculations
 ```
+
+### Runtime Data (CREATED ON FIRST RUN - do not commit)
+All persistent data is stored under `scripts/data/`:
+
+```
+scripts/
+└── data/                          # Runtime data directory
+    ├── asset_data.db              # SQLite database (created on first import)
+    └── special_cases.json         # Corporate actions configuration (copy from template)
+```
+
+**Agent Note:** When setting up this skill, ALWAYS ensure `scripts/data/` exists and store all database/config files there.
 
 ## Special Cases Configuration
 
