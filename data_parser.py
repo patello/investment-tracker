@@ -699,6 +699,13 @@ class DataParser:
         Parameters:
         row (tuple): A row from the transactions table in the database.
         """
+        # Handle standalone incoming transfers from external accounts not tracked in DB
+        if row[6] > 0 and "Insättning från" in str(row[3]):
+            # Incoming transfer from external account not tracked in DB
+            # Treat as deposit to provide capital for subsequent purchases
+            self.handle_deposit(row)
+            return
+        
         if self.pending_transfer["rowid"] is None:
             # First of pair
             self.pending_transfer["rowid"] = row[-1]
@@ -865,7 +872,7 @@ class DataParser:
         #Consider upgrading to python3.8 to make this more elegant with := statment
         while row is not None:
             month = self.allocate_to_month(row[0])
-            if row[2] == "Insättning":
+            if row[2] == "Insättning" or row[2] == "Autogiroinsättning":
                 self.handle_deposit(row)
             elif row[2] == "Uttag":
                 self.handle_withdrawal(row)
@@ -875,8 +882,9 @@ class DataParser:
                 self.handle_sale(row)
             elif row[2] == "Utdelning":
                 self.handle_dividend(row)
-            elif row[2] == "Räntor" or row[2] == "Ränta" or row[2] == "Inlåningsränta" or row[2] == "Utlåningsränta":
+            elif row[2] == "Räntor" or row[2] == "Ränta" or row[2] == "Inlåningsränta" or row[2] == "Utlåningsränta" or row[2] == "Uttag av riskkostnad":
                 # Interest can either be negative and handled as a fee, or positive and handled like a dividend on capital
+                # Uttag av riskkostnad is a risk premium fee (always negative)
                 if row[6] > 0:
                     self.handle_interest(row)
                 else:
@@ -884,7 +892,7 @@ class DataParser:
             elif row[2] == "Utbokning fraktioner":
                 # Tiny fraction write-off, ignore (negligible amount)
                 self.handle_ignore(row)
-            elif "Utländsk källskatt" in row[2] or "Prelskatt" in row[2] or "Preliminärskatt" in row[2]:
+            elif "Utländsk källskatt" in row[2] or "Prelskatt" in row[2] or "Preliminärskatt" in row[2] or "Avkastningsskatt" in row[2]:
                 self.handle_fees(row)
             elif "Byte" in row[2] or row[2] == "Övrigt":
                 self.handle_listing_change(row)
