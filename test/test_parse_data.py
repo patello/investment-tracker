@@ -10,7 +10,8 @@ passing_datasets = [
     "./test/data/reordered_data.csv",
     "./test/data/asset_deposit.csv",
     "./test/data/interest_fees.csv",
-    "./test/data/fraction_writeoff.csv"]
+    "./test/data/fraction_writeoff.csv",
+    "./test/data/new_transaction_types.csv"]
 
 # Parametrize the fixture
 # Indirect parametrization allows us to use different datasets for the same fixture
