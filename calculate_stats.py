@@ -1116,8 +1116,6 @@ class StatCalculator:
         Parameters:
         accounts (list or None): List of account strings to include, or None for all.
         """
-        import json
-        
         summaries = self.get_account_summaries(accounts)
         
         if not summaries:
@@ -1125,8 +1123,7 @@ class StatCalculator:
             return
         
         # Get account nicknames
-        nicknames_json = self.db.get_metadata('account_nicknames') or '{}'
-        nicknames = json.loads(nicknames_json)
+        nicknames = self.db.get_all_account_nicknames()
         
         def get_display_name(account):
             """Get display name for account, using nickname if available."""

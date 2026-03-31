@@ -9,7 +9,6 @@ price updates, and statistics calculation.
 import argparse
 import sys
 import logging
-import json
 from datetime import datetime, timedelta
 
 from database_handler import DatabaseHandler
@@ -351,25 +350,18 @@ def settings_default_accounts(args):
 
 def settings_account_nickname(args):
     """Set or remove account nicknames."""
-    import json
-    
     db = get_db(args)
-    
-    # Get existing nicknames
-    nicknames_json = db.get_metadata('account_nicknames') or '{}'
-    nicknames = json.loads(nicknames_json)
     
     if args.remove:
         # Remove nickname for specified account
         account = args.remove.strip()
-        if account in nicknames:
-            del nicknames[account]
-            db.set_metadata('account_nicknames', json.dumps(nicknames))
+        if db.remove_account_nickname(account):
             logging.info(f"Removed nickname for account '{account}'")
         else:
             logging.info(f"No nickname set for account '{account}'")
     elif args.list:
         # List all nicknames
+        nicknames = db.get_all_account_nicknames()
         if nicknames:
             print("Account nicknames:")
             for account, nickname in sorted(nicknames.items()):
@@ -380,8 +372,7 @@ def settings_account_nickname(args):
         # Set nickname
         account = args.account.strip()
         nickname = args.nickname.strip()
-        nicknames[account] = nickname
-        db.set_metadata('account_nicknames', json.dumps(nicknames))
+        db.set_account_nickname(account, nickname)
         logging.info(f"Set nickname for account '{account}' to '{nickname}'")
     else:
         logging.error("Must specify --remove, --list, or both account and nickname")

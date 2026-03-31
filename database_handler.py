@@ -157,6 +157,13 @@ class DatabaseHandler:
                 PRIMARY KEY(month, asset_id, account)
                 );""")
         
+        # accounts contains account-level configuration like nicknames
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS accounts(
+                account_id TEXT PRIMARY KEY,
+                nickname TEXT
+                );""")
+
         # metadata contains system state information
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS metadata(
@@ -377,6 +384,74 @@ class DatabaseHandler:
         
         cursor = self.conn.cursor()
         cursor.execute("SELECT key, value FROM metadata")
+        return dict(cursor.fetchall())
+
+    def set_account_nickname(self, account_id: str, nickname: str) -> None:
+        """
+        Set a nickname for an account.
+        
+        Parameters:
+        account_id (str): Account ID
+        nickname (str): Nickname for the account
+        """
+        if not self.conn:
+            raise Exception("Database connection not established.")
+        
+        cursor = self.conn.cursor()
+        cursor.execute(
+            "INSERT OR REPLACE INTO accounts (account_id, nickname) VALUES (?, ?)",
+            (account_id, nickname)
+        )
+        self.conn.commit()
+
+    def get_account_nickname(self, account_id: str) -> str:
+        """
+        Get the nickname for an account.
+        
+        Parameters:
+        account_id (str): Account ID
+        
+        Returns:
+        str: Nickname or None if not set
+        """
+        if not self.conn:
+            raise Exception("Database connection not established.")
+        
+        cursor = self.conn.cursor()
+        cursor.execute("SELECT nickname FROM accounts WHERE account_id = ?", (account_id,))
+        result = cursor.fetchone()
+        return result[0] if result else None
+
+    def remove_account_nickname(self, account_id: str) -> bool:
+        """
+        Remove the nickname for an account.
+        
+        Parameters:
+        account_id (str): Account ID
+        
+        Returns:
+        bool: True if a nickname was removed, False if none existed
+        """
+        if not self.conn:
+            raise Exception("Database connection not established.")
+        
+        cursor = self.conn.cursor()
+        cursor.execute("DELETE FROM accounts WHERE account_id = ?", (account_id,))
+        self.conn.commit()
+        return cursor.rowcount > 0
+
+    def get_all_account_nicknames(self) -> dict:
+        """
+        Get all account nicknames as a dictionary.
+        
+        Returns:
+        dict: Account ID -> nickname mappings
+        """
+        if not self.conn:
+            raise Exception("Database connection not established.")
+        
+        cursor = self.conn.cursor()
+        cursor.execute("SELECT account_id, nickname FROM accounts WHERE nickname IS NOT NULL")
         return dict(cursor.fetchall())
 
 
