@@ -7,6 +7,10 @@ on:
     types: [created]
   pull_request_review_comment:
     types: [created]
+  pull_request_review:
+    types: [submitted]
+  pull_request:
+    types: [closed]
 
 jobs:
   notify-openclaw:
@@ -23,17 +27,18 @@ jobs:
             TARGET_URL="${{ github.event.issue.html_url }}"
           elif [ "$EVENT_TYPE" == "issue_comment" ] || [ "$EVENT_TYPE" == "pull_request_review_comment" ]; then
             TARGET_URL="${{ github.event.comment.html_url }}"
+          elif [ "$EVENT_TYPE" == "pull_request_review" ]; then
+            TARGET_URL="${{ github.event.review.html_url }}"
+          elif [ "$EVENT_TYPE" == "pull_request" ]; then
+            TARGET_URL="${{ github.event.pull_request.html_url }}"
           else
             TARGET_URL="Unknown URL"
           fi
 
-          # Dispatch request to OpenClaw
-          # Dispatch request to OpenClaw
           curl -X POST "${{ secrets.OPENCLAW_HOOKS_URL }}" \
             -H "Authorization: Bearer ${{ secrets.OPENCLAW_HOOK_TOKEN }}" \
             -H "Content-Type: application/json" \
             -d "{
               \"message\": \"GitHub event: $EVENT_TYPE triggered by $ACTOR. Link: $TARGET_URL\",
-              \"name\": \"GitHub Action\",
-              \"agentId\": \"${{ secrets.OPENCLAW_AGENT_ID }}\"            
+              \"agentId\": \"${{ secrets.OPENCLAW_AGENT_ID }}\"
           }"
