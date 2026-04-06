@@ -348,6 +348,39 @@ def settings_default_accounts(args):
     return 0
 
 
+def settings_account_nickname(args):
+    """Set or remove account nicknames."""
+    db = get_db(args)
+    
+    if args.remove:
+        # Remove nickname for specified account
+        account = args.remove.strip()
+        if db.remove_account_nickname(account):
+            logging.info(f"Removed nickname for account '{account}'")
+        else:
+            logging.info(f"No nickname set for account '{account}'")
+    elif args.list:
+        # List all nicknames
+        nicknames = db.get_all_account_nicknames()
+        if nicknames:
+            print("Account nicknames:")
+            for account, nickname in sorted(nicknames.items()):
+                print(f"  {account}: {nickname}")
+        else:
+            print("No account nicknames set")
+    elif args.account and args.nickname is not None:
+        # Set nickname
+        account = args.account.strip()
+        nickname = args.nickname.strip()
+        db.set_account_nickname(account, nickname)
+        logging.info(f"Set nickname for account '{account}' to '{nickname}'")
+    else:
+        logging.error("Must specify --remove, --list, or both account and nickname")
+        return 1
+    
+    return 0
+
+
 def accounts_summary(args):
     """Show account summaries with asset values and cash."""
     db = get_db(args)
@@ -508,6 +541,14 @@ Examples:
     default_accounts_parser = settings_subparsers.add_parser('default-accounts', help='Set default accounts')
     default_accounts_parser.add_argument('accounts', help='Comma-separated list of account numbers, or "all" for all accounts')
     default_accounts_parser.set_defaults(func=settings_default_accounts)
+    
+    # Account nickname subcommand
+    account_nickname_parser = settings_subparsers.add_parser('account-nickname', help='Set or remove account nicknames')
+    account_nickname_parser.add_argument('account', nargs='?', help='Account number to set nickname for')
+    account_nickname_parser.add_argument('nickname', nargs='?', help='Nickname for the account')
+    account_nickname_parser.add_argument('--remove', metavar='ACCOUNT', help='Remove nickname for specified account')
+    account_nickname_parser.add_argument('--list', action='store_true', help='List all account nicknames')
+    account_nickname_parser.set_defaults(func=settings_account_nickname)
     
     # Accounts command (show account summaries)
     accounts_parser = subparsers.add_parser('accounts', help='Show account summaries with asset values and cash')

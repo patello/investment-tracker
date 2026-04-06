@@ -1122,6 +1122,13 @@ class StatCalculator:
             print("No account data found")
             return
         
+        # Get account nicknames
+        nicknames = self.db.get_all_account_nicknames()
+        
+        def get_display_name(account):
+            """Get display name for account, using nickname if available."""
+            return nicknames.get(account, account)
+        
         # Calculate totals
         total_cash = sum(s[1] for s in summaries)
         total_assets = sum(s[2] for s in summaries)
@@ -1133,7 +1140,8 @@ class StatCalculator:
         
         # Print each account
         for account, cash, asset_value, total_value in summaries:
-            print(f"{account:<20} {cash:>12.0f} {asset_value:>12.0f} {total_value:>12.0f}")
+            display_name = get_display_name(account)
+            print(f"{display_name:<20} {cash:>12.0f} {asset_value:>12.0f} {total_value:>12.0f}")
         
         # Print totals
         print("-" * 56)
@@ -1145,7 +1153,8 @@ class StatCalculator:
             for account, cash, asset_value, total_value in summaries:
                 if total_total > 0:
                     percentage = 100 * total_value / total_total
-                    print(f"  {account}: {percentage:.1f}%")
+                    display_name = get_display_name(account)
+                    print(f"  {display_name}: {percentage:.1f}%")
 
     def update_prices(self, force: bool = False):
         """

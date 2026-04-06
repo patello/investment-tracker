@@ -54,7 +54,10 @@ python cli.py status
 # 4. (Optional) Set default accounts for filtering
 python cli.py settings default-accounts "account1,savings_account"
 
-# 5. View account summaries
+# 5. (Optional) Set account nicknames for readability
+python cli.py settings account-nickname 1234567 "Savings"
+
+# 6. View account summaries
 python cli.py accounts --update-prices auto
 ```
 
@@ -104,6 +107,23 @@ The new `stats` command includes intelligent caching and update logic:
   python cli.py stats
   ```
 
+
+#### Account Nicknames
+
+Assign human-readable names to account numbers for easier identification:
+
+```bash
+# Set a nickname for an account
+python cli.py settings account-nickname 1234567 "Savings"
+
+# List all nicknames
+python cli.py settings account-nickname --list
+
+# Remove a nickname
+python cli.py settings account-nickname --remove 1234567
+```
+
+Nicknames are stored in the database and displayed in the `accounts` command output alongside account numbers.
 
 #### Account Filtering
 
@@ -219,8 +239,9 @@ The unified CLI provides all functionality in a streamlined interface:
 2. Import and process transactions: `python cli.py import data/your_transactions.csv`
 3. View statistics with automatic price updates: `python cli.py stats --update-prices auto`
 4. (Optional) Set default accounts for filtering: `python cli.py settings default-accounts "account1,savings_account"`
-5. View account summaries: `python cli.py accounts --update-prices auto`
-6. Check system status: `python cli.py status`
+5. (Optional) Set account nicknames: `python cli.py settings account-nickname 1234567 "Savings"`
+6. View account summaries: `python cli.py accounts --update-prices auto`
+7. Check system status: `python cli.py status`
 
 **Advanced usage with account filtering:**
 ```bash
