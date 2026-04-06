@@ -35,10 +35,20 @@ jobs:
             TARGET_URL="Unknown URL"
           fi
 
+          # Derive session key from issue/PR number for session grouping
+          if [ "$EVENT_TYPE" == "issues" ] || [ "$EVENT_TYPE" == "issue_comment" ]; then
+            SESSION_KEY="hook:gh-issue-${{ github.event.issue.number }}"
+          elif [ "$EVENT_TYPE" == "pull_request_review_comment" ] || [ "$EVENT_TYPE" == "pull_request_review" ] || [ "$EVENT_TYPE" == "pull_request" ]; then
+            SESSION_KEY="hook:gh-pr-${{ github.event.pull_request.number }}"
+          else
+            SESSION_KEY="hook:gh-misc"
+          fi
+
           curl -X POST "${{ secrets.OPENCLAW_HOOKS_URL }}" \
             -H "Authorization: Bearer ${{ secrets.OPENCLAW_HOOK_TOKEN }}" \
             -H "Content-Type: application/json" \
             -d "{
               \"message\": \"GitHub event: $EVENT_TYPE triggered by $ACTOR. Link: $TARGET_URL\",
-              \"agentId\": \"${{ secrets.OPENCLAW_AGENT_ID }}\"
+              \"agentId\": \"${{ secrets.OPENCLAW_AGENT_ID }}\",
+              \"sessionKey\": \"$SESSION_KEY\"
           }"
