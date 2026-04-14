@@ -352,7 +352,7 @@ class StatCalculator:
         for account in accounts:
             # Get all months for this account in chronological order
             cur.execute("""
-                SELECT month, deposit, withdrawal, capital, active_base, closed_return
+                SELECT month, deposit, withdrawal, capital, active_base, closed_return, transfer_net
                 FROM cohort_data
                 WHERE account = ?
                 ORDER BY month ASC
@@ -371,11 +371,12 @@ class StatCalculator:
             acc_realized_gainloss = 0.0
             acc_unrealized_gainloss = 0.0
             
-            for month_str, deposit, withdrawal, capital, active_base, closed_return in month_rows:
+            for month_str, deposit, withdrawal, capital, active_base, closed_return, transfer_net in month_rows:
                 # Handle NULL values
                 deposit = deposit or 0.0
                 withdrawal = withdrawal or 0.0
                 capital = capital or 0.0
+                transfer_net = transfer_net or 0.0
                 
                 # Get asset holdings for this account in this month
                 cur.execute("""
@@ -396,12 +397,13 @@ class StatCalculator:
                 # Total value = cash + assets
                 value = capital + asset_value
                 
-                # Calculate gain/loss using cash-based formulas (same as original)
-                total_gainloss = withdrawal + value - deposit
+                # Calculate gain/loss - subtract transfer_net to neutralize phantom gains/losses
+                # from internal transfers between accounts
+                total_gainloss = withdrawal + value - deposit - transfer_net
                 
-                # Calculate realized gain/loss (same logic as original)
-                if (withdrawal + capital >= deposit) or (withdrawal + capital < deposit and value <= 0):
-                    realized_gainloss = withdrawal + capital - deposit
+                # Calculate realized gain/loss
+                if (withdrawal + capital >= deposit + transfer_net) or (withdrawal + capital < deposit + transfer_net and value <= 0):
+                    realized_gainloss = withdrawal + capital - deposit - transfer_net
                 else:
                     realized_gainloss = 0.0
                 
@@ -501,7 +503,7 @@ class StatCalculator:
             for year_str in years:
                 # Sum cohort deposits, withdrawals, and cash capital for the entire year
                 cur.execute("""
-                    SELECT SUM(deposit), SUM(withdrawal), SUM(capital), SUM(active_base)
+                    SELECT SUM(deposit), SUM(withdrawal), SUM(capital), SUM(active_base), SUM(transfer_net)
                     FROM cohort_data
                     WHERE account = ? AND strftime('%Y', month) = ?
                 """, (account, year_str))
@@ -510,6 +512,7 @@ class StatCalculator:
                 withdrawal = dep_row[1] or 0.0
                 capital = dep_row[2] or 0.0
                 active_base = dep_row[3] or 0.0
+                transfer_net = dep_row[4] or 0.0
                 
                 # Get deposit-weighted closed_return for closed cohorts in this year
                 cur.execute("""
@@ -540,10 +543,10 @@ class StatCalculator:
                 value = capital + asset_value
                 
                 # Calculate gain/loss
-                total_gainloss = withdrawal + value - deposit
+                total_gainloss = withdrawal + value - deposit - transfer_net
                 
-                if (withdrawal + capital >= deposit) or (withdrawal + capital < deposit and value <= 0):
-                    realized_gainloss = withdrawal + capital - deposit
+                if (withdrawal + capital >= deposit + transfer_net) or (withdrawal + capital < deposit + transfer_net and value <= 0):
+                    realized_gainloss = withdrawal + capital - deposit - transfer_net
                 else:
                     realized_gainloss = 0.0
                     

@@ -108,6 +108,7 @@ class DatabaseHandler:
                 capital REAL DEFAULT 0,
                 active_base REAL DEFAULT 0,
                 closed_return REAL DEFAULT NULL,
+                transfer_net REAL DEFAULT 0,
                 PRIMARY KEY(month, account)
                 );""")
                 
@@ -220,6 +221,12 @@ class DatabaseHandler:
                 acc_unrealized_gainloss REAL DEFAULT 0,
                 PRIMARY KEY(year)
                 );""")
+
+        # Migrate: add transfer_net column if missing (existing databases)
+        try:
+            cursor.execute("ALTER TABLE cohort_data ADD COLUMN transfer_net REAL DEFAULT 0")
+        except Exception:
+            pass  # Column already exists
 
         self.conn.commit()
 
