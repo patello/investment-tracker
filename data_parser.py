@@ -766,10 +766,10 @@ class DataParser:
                         "UPDATE cohort_data SET active_base = active_base * (1 - ?) WHERE month = ? AND account = ?",
                         (r, oldest_available, out_account))
 
-                # Remove from OUT account
+                # Remove from OUT account (transfer_net decreases for OUT side)
                 self.data_cur.execute(
-                    "UPDATE cohort_data SET capital = capital - ? WHERE month = ? AND account = ?",
-                    (month_amount, oldest_available, out_account)
+                    "UPDATE cohort_data SET capital = capital - ?, transfer_net = transfer_net - ? WHERE month = ? AND account = ?",
+                    (month_amount, month_amount, oldest_available, out_account)
                 )
                 
                 self.data_cur.execute("""
@@ -789,9 +789,10 @@ class DataParser:
                     "INSERT OR IGNORE INTO cohort_data(month, account) VALUES(?,?)",
                     (oldest_available, in_account)
                 )
+                # Add to IN account (transfer_net increases for IN side)
                 self.data_cur.execute(
-                    "UPDATE cohort_data SET capital = capital + ?, active_base = active_base + ? WHERE month = ? AND account = ?",
-                    (amount, amount, oldest_available, in_account)
+                    "UPDATE cohort_data SET capital = capital + ?, active_base = active_base + ?, transfer_net = transfer_net + ? WHERE month = ? AND account = ?",
+                    (amount, amount, amount, oldest_available, in_account)
                 )
                 
                 self.data_cur.execute("""
