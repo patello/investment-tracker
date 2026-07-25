@@ -169,7 +169,30 @@ class DataParser:
             self._transaction_cur = self.db.get_cursor()
         return self._transaction_cur
 
-    
+
+    @staticmethod
+    def _to_sek_price(row: tuple) -> float:
+        """Compute the SEK per-share price from a transaction row.
+
+        The Avanza CSV stores `total` and `courtage` in SEK (already
+        FX-converted), while `price` is in the instrument's native currency.
+        For buy/sell (total != 0) we derive the SEK market price from the
+        total, correcting for courtage:
+            sell (total > 0): sek_price = (total + courtage) / abs(amount)
+            buy  (total < 0): sek_price = (abs(total) - courtage) / abs(amount)
+        For total == 0 (Tillgångsinsättning) the SEK price cannot be derived
+        from the row alone — the native price is returned and will be
+        corrected by the next update_prices run for non-SEK instruments.
+        """
+        amount = row[4]
+        price = row[5]
+        total = row[6]
+        courtage = row[7] if row[7] is not None else 0.0
+        if abs(amount) < 0.0001 or abs(total) < 0.0001:
+            return price
+        sek_market_value = abs(total) + (courtage if total > 0 else -courtage)
+        return sek_market_value / abs(amount)
+
     def convert_number(self,number_string : str) -> float:
         """
         Takes a number as a string and converts it to a float, also converts comma to dot as decimal separator and '-' to 0.
@@ -576,7 +599,7 @@ class DataParser:
         self.data_cur.execute("INSERT OR IGNORE INTO assets (asset) VALUES (?) ",(asset,))
         asset_id = self.data_cur.execute("SELECT asset_id FROM assets WHERE asset = ?",(asset,)).fetchone()[0]
         asset_amount = row[4]
-        price = row[5]
+        price = self._to_sek_price(row)
         total_amount = -row[6]
         date = row[0]
         if price > 0:
@@ -617,7 +640,7 @@ class DataParser:
         self.data_cur.execute("INSERT OR IGNORE INTO assets (asset) VALUES (?) ",(asset,))
         asset_id = self.data_cur.execute("SELECT asset_id FROM assets WHERE asset = ?",(asset,)).fetchone()[0]
         asset_amount = -row[4]
-        price = row[5]
+        price = self._to_sek_price(row)
         total_amount = row[6]
         date = row[0]
         if price > 0:
@@ -799,7 +822,7 @@ class DataParser:
         account = row[1]
         asset = row[3]
         amount = row[4]
-        price = row[5]
+        price = self._to_sek_price(row)
         self.data_cur.execute("INSERT OR IGNORE INTO assets (asset) VALUES (?) ",(asset,))
         asset_id = self.data_cur.execute("SELECT asset_id FROM assets WHERE asset = ?",(asset,)).fetchone()[0]
         date = row[0]

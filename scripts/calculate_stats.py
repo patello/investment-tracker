@@ -1349,6 +1349,39 @@ class StatCalculator:
             "Accept": "application/json",
         }
 
+        # FX rate cache for this run: currency -> SEK per 1 unit.
+        # Fetched lazily from the Avanza INDEX search (e.g. "EUR/SEK" spot).
+        # Rates are persisted in exchange_rates for the historical record.
+        fx_rates = {}
+
+        def get_fx_rate(currency):
+            """Return the live SEK rate for 1 unit of `currency`, or None."""
+            if currency in fx_rates:
+                return fx_rates[currency]
+            try:
+                r = requests.post(url, headers=headers, timeout=10, json={
+                    "query": f"{currency}/SEK",
+                    "searchFilter": {"types": ["INDEX"]},
+                    "pagination": {"from": 0, "size": 1},
+                })
+                time.sleep(0.05)
+                if r.status_code == 200:
+                    hits = r.json().get("hits", [])
+                    if hits and hits[0].get("price", {}).get("last"):
+                        rate_str = hits[0]["price"]["last"]
+                        rate = float(rate_str.replace("\u00a0", "").replace(" ", "").replace(",", "."))
+                        fx_rates[currency] = rate
+                        cur.execute(
+                            "INSERT OR REPLACE INTO exchange_rates (currency, rate_date, rate, source) "
+                            "VALUES (?, ?, ?, 'avanza-index')",
+                            (currency, today, rate))
+                        logging.info(f"FX rate: 1 {currency} = {rate} SEK")
+                        return rate
+            except Exception as e:
+                logging.warning(f"Failed to fetch FX rate for {currency}: {e}")
+            fx_rates[currency] = None
+            return None
+
         for (asset,asset_id) in assets:
             r = requests.post(url, headers=headers, json={"query": asset, "limit": 5}, timeout=10)
             time.sleep(0.05)
@@ -1401,6 +1434,18 @@ class StatCalculator:
                                                     detail_success = True
                                 except Exception as e:
                                     logging.debug(f"Failed to fetch detail for {asset} ({asset_type}): {e}")
+
+                            # Convert native-currency price to SEK (issue #81).
+                            # The search hit carries price.currency ("EUR",
+                            # "DKK", etc.); null or "SEK" means no conversion.
+                            currency = hit.get("price", {}).get("currency")
+                            if currency and currency != "SEK":
+                                fx_rate = get_fx_rate(currency)
+                                if fx_rate and fx_rate > 0:
+                                    price = price * fx_rate
+                                else:
+                                    logging.warning(
+                                        f"No FX rate for {currency}; storing native price for {asset}")
 
                             cur.execute("UPDATE assets SET latest_price = ?, latest_price_date = ? WHERE asset_id = ?",
                                         (price, price_date, asset_id))

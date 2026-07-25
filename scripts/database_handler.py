@@ -234,7 +234,10 @@ class DatabaseHandler:
                 PRIMARY KEY(year)
                 );""")
 
-        # asset_prices contains historical asset prices from both transaction events and external API fetches
+        # asset_prices contains historical asset prices (in SEK) from both
+        # transaction events and external API fetches. Prices are stored in SEK:
+        # transaction-sourced rows derive SEK from the CSV total (already SEK),
+        # external rows are converted at fetch time using the live FX rate.
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS asset_prices(
                 asset_id INTEGER NOT NULL,
@@ -243,6 +246,20 @@ class DatabaseHandler:
                 source TEXT CHECK(source IN ('transaction', 'external')),
                 PRIMARY KEY(asset_id, price_date),
                 FOREIGN KEY (asset_id) REFERENCES assets (asset_id)
+                );""")
+
+        # exchange_rates stores live FX rates fetched during price updates.
+        # One row per (currency, rate_date). SEK is the quote currency:
+        # rate = how many SEK per 1 unit of `currency`. Stored for the
+        # historical record and future use; NOT read by get_price (all
+        # asset_prices rows are already SEK-converted at write time).
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS exchange_rates(
+                currency TEXT NOT NULL,
+                rate_date DATE NOT NULL,
+                rate REAL NOT NULL,
+                source TEXT,
+                PRIMARY KEY(currency, rate_date)
                 );""")
 
         # Migrate: normalize asset names (trim leading/trailing whitespace).
@@ -254,14 +271,56 @@ class DatabaseHandler:
         cursor.execute("UPDATE transactions SET asset_name = trim(asset_name) WHERE asset_name != trim(asset_name)")
         cursor.execute("UPDATE assets SET asset = trim(asset) WHERE asset != trim(asset)")
 
-        # Retroactive Migration: populate asset_prices with historical transaction prices from processed transactions
+        # Retroactive Migration: populate asset_prices with historical transaction prices from processed transactions.
+        # Prices are stored in SEK. For buy/sell with a non-zero total, the SEK
+        # price is derived from the CSV total (already SEK), correcting for
+        # courtage sign: sell (total>0) adds courtage back, buy (total<0)
+        # subtracts it. For Tillgångsinsättning (total=0), the native CSV price
+        # is used as-is (the live FX fetch in update_prices will correct it).
         cursor.execute("""
             INSERT OR IGNORE INTO asset_prices (asset_id, price_date, price, source)
-            SELECT a.asset_id, t.date, t.price, 'transaction'
+            SELECT a.asset_id, t.date,
+                   CASE WHEN abs(t.total) > 0.0001 AND abs(t.amount) > 0.0001
+                        THEN (abs(t.total) + CASE WHEN t.total > 0 THEN t.courtage ELSE -t.courtage END) / abs(t.amount)
+                        ELSE t.price END,
+                   'transaction'
             FROM transactions t
             JOIN assets a ON t.asset_name = a.asset
             WHERE t.processed = 1 AND t.transaction_type IN ('Köp', 'Sälj', 'Tillgångsinsättning')
             """)
+
+        # One-time Migration (issue #81): rebuild existing transaction-sourced
+        # asset_prices rows that still hold native-currency prices to SEK.
+        # Guarded by a metadata flag so it only runs once. Only rows where the
+        # transaction has a non-zero total are eligible (those have a derivable
+        # SEK price from the CSV total); total=0 rows are left for update_prices.
+        cursor.execute("SELECT value FROM metadata WHERE key = 'sek_prices_migrated'")
+        if not cursor.fetchone():
+            cursor.execute("""
+                UPDATE asset_prices
+                SET price = (
+                    SELECT (abs(t.total) + CASE WHEN t.total > 0 THEN t.courtage ELSE -t.courtage END) / abs(t.amount)
+                    FROM transactions t
+                    JOIN assets a ON t.asset_name = a.asset
+                    WHERE a.asset_id = asset_prices.asset_id
+                      AND t.date = asset_prices.price_date
+                      AND t.transaction_type IN ('Köp', 'Sälj')
+                      AND abs(t.total) > 0.0001
+                      AND abs(t.amount) > 0.0001
+                    LIMIT 1
+                )
+                WHERE source = 'transaction'
+                  AND EXISTS (
+                    SELECT 1 FROM transactions t
+                    JOIN assets a ON t.asset_name = a.asset
+                    WHERE a.asset_id = asset_prices.asset_id
+                      AND t.date = asset_prices.price_date
+                      AND t.transaction_type IN ('Köp', 'Sälj')
+                      AND abs(t.total) > 0.0001
+                      AND abs(t.amount) > 0.0001
+                  )
+            """)
+            cursor.execute("INSERT OR REPLACE INTO metadata (key, value) VALUES ('sek_prices_migrated', '1')")
 
         # Migrate: add transfer_net column if missing (existing databases)
         try:
