@@ -894,7 +894,17 @@ class DataParser:
             in_amount = self.pending_transfer["amount"]
             in_date = self.pending_transfer["date"]
             in_rowid = self.pending_transfer["rowid"]
-        
+
+        # Issue #82: parent->virtual transfers shift the deposit column (so the
+        # virtual inherits real deposit attribution for APY/display) instead of
+        # transfer_net. Physical-to-physical transfers keep transfer_net.
+        vr = self.data_cur.execute(
+            "SELECT is_virtual, parent_account FROM accounts WHERE account_id = ?",
+            (in_account,),
+        ).fetchone()
+        parent_to_virtual = bool(vr and vr[0] and vr[1] == out_account)
+        shift_col = "deposit" if parent_to_virtual else "transfer_net"
+
         # Get FIFO allocations from OUT account (following withdrawal pattern)
         month_capital = self.available_capital(out_account)
         total_capital = sum(e[1] for e in month_capital)
@@ -920,18 +930,23 @@ class DataParser:
                         "UPDATE cohort_data SET active_base = active_base * (1 - ?) WHERE month = ? AND account = ?",
                         (r, oldest_available, out_account))
 
-                # Remove from OUT account (transfer_net decreases for OUT side)
+                # Remove from OUT account. shift_col is 'deposit' for
+                # parent->virtual (issue #82) and 'transfer_net' otherwise.
                 self.data_cur.execute(
-                    "UPDATE cohort_data SET capital = capital - ?, transfer_net = transfer_net - ? WHERE month = ? AND account = ?",
+                    f"UPDATE cohort_data SET capital = capital - ?, {shift_col} = {shift_col} - ? WHERE month = ? AND account = ?",
                     (month_amount, month_amount, oldest_available, out_account)
                 )
-                
-                self.data_cur.execute("""
-                    INSERT INTO cohort_cash_flows (cohort_month, account, transaction_month, amount)
-                    VALUES (?, ?, ?, ?)
-                    ON CONFLICT(cohort_month, account, transaction_month)
-                    DO UPDATE SET amount = amount + excluded.amount
-                """, (oldest_available, out_account, out_transaction_month, -month_amount))
+
+                # Deposits do not produce cohort_cash_flows (only withdrawals do),
+                # so skip the cash-flow row on the deposit-shift path; otherwise
+                # the Modified Dietz denominator (deposit + sum_w_cf) double-counts.
+                if not parent_to_virtual:
+                    self.data_cur.execute("""
+                        INSERT INTO cohort_cash_flows (cohort_month, account, transaction_month, amount)
+                        VALUES (?, ?, ?, ?)
+                        ON CONFLICT(cohort_month, account, transaction_month)
+                        DO UPDATE SET amount = amount + excluded.amount
+                    """, (oldest_available, out_account, out_transaction_month, -month_amount))
                 
                 remaining -= month_amount
                 i += 1
@@ -943,18 +958,20 @@ class DataParser:
                     "INSERT OR IGNORE INTO cohort_data(month, account) VALUES(?,?)",
                     (oldest_available, in_account)
                 )
-                # Add to IN account (transfer_net increases for IN side)
+                # Add to IN account. shift_col is 'deposit' for parent->virtual
+                # (issue #82) and 'transfer_net' otherwise.
                 self.data_cur.execute(
-                    "UPDATE cohort_data SET capital = capital + ?, active_base = active_base + ?, transfer_net = transfer_net + ? WHERE month = ? AND account = ?",
+                    f"UPDATE cohort_data SET capital = capital + ?, active_base = active_base + ?, {shift_col} = {shift_col} + ? WHERE month = ? AND account = ?",
                     (amount, amount, amount, oldest_available, in_account)
                 )
-                
-                self.data_cur.execute("""
-                    INSERT INTO cohort_cash_flows (cohort_month, account, transaction_month, amount)
-                    VALUES (?, ?, ?, ?)
-                    ON CONFLICT(cohort_month, account, transaction_month)
-                    DO UPDATE SET amount = amount + excluded.amount
-                """, (oldest_available, in_account, in_transaction_month, amount))
+
+                if not parent_to_virtual:
+                    self.data_cur.execute("""
+                        INSERT INTO cohort_cash_flows (cohort_month, account, transaction_month, amount)
+                        VALUES (?, ?, ?, ?)
+                        ON CONFLICT(cohort_month, account, transaction_month)
+                        DO UPDATE SET amount = amount + excluded.amount
+                    """, (oldest_available, in_account, in_transaction_month, amount))
             
             # Mark BOTH processed
             self.transaction_cur.execute(

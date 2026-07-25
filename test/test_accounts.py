@@ -863,6 +863,115 @@ def test_allocate_no_transfer_when_virtual_has_enough_cash(tmp_path):
     assert _holdings(DatabaseHandler(db_file), "YOLO") == pytest.approx(100, abs=1e-6)
 
 
+# ---------- issue #82: parent->virtual shifts deposit, physical keeps transfer_net ----------
+
+def test_allocate_parent_to_virtual_shifts_deposit_not_transfer_net(tmp_path):
+    """Issue #82: a parent->virtual funding transfer shifts the deposit column
+    (so the virtual's deposit>0 for APY/display), not transfer_net. The parent
+    gives up the deposit so aggregate deposit is preserved (no double-count)."""
+    db_file = _base_parent_db(tmp_path)
+    cli.account_create(_ns(db_file, name="YOLO", parent="1111", starting_cash=None, starting_cash_date=None))
+    rc = cli.account_allocate(_ns(
+        db_file, tx_date="2020-01-02", tx_asset="Asset A", to="YOLO", from_account=None, shares=None
+    ))
+    assert rc == 0
+    db = DatabaseHandler(db_file)
+    db.connect()
+    cur = db.get_cursor()
+    cur.execute(
+        "SELECT COALESCE(SUM(deposit),0), COALESCE(SUM(transfer_net),0) "
+        "FROM cohort_data WHERE account='YOLO'"
+    )
+    v_dep, v_tn = cur.fetchone()
+    assert v_dep == pytest.approx(10000, abs=1)
+    assert v_tn == pytest.approx(0, abs=1e-6)
+    cur.execute(
+        "SELECT COALESCE(SUM(deposit),0), COALESCE(SUM(transfer_net),0) "
+        "FROM cohort_data WHERE account='1111'"
+    )
+    p_dep, p_tn = cur.fetchone()
+    assert p_dep == pytest.approx(10000, abs=1)
+    assert p_tn == pytest.approx(0, abs=1e-6)
+    # Aggregate deposit preserved: parent + virtual == original 20000
+    assert (v_dep + p_dep) == pytest.approx(20000, abs=1)
+    db.disconnect()
+
+
+def test_parent_to_virtual_deposit_shift_skips_cohort_cash_flows(tmp_path):
+    """Issue #82: deposit-shift transfers must not write cohort_cash_flows rows
+    (deposits produce no cash flows), or the Modified Dietz denominator
+    (deposit + sum_w_cf) double-counts the amount."""
+    db_file = _base_parent_db(tmp_path)
+    cli.account_create(_ns(db_file, name="YOLO", parent="1111", starting_cash=None, starting_cash_date=None))
+    cli.account_allocate(_ns(
+        db_file, tx_date="2020-01-02", tx_asset="Asset A", to="YOLO", from_account=None, shares=None
+    ))
+    db = DatabaseHandler(db_file)
+    db.connect()
+    cur = db.get_cursor()
+    cur.execute("SELECT COUNT(*) FROM cohort_cash_flows WHERE account='YOLO'")
+    assert cur.fetchone()[0] == 0
+    db.disconnect()
+
+
+def test_parent_to_virtual_deposit_shift_preserves_realized(tmp_path):
+    """Issue #82: realized gain/loss is unchanged since deposit and transfer_net
+    both enter the formula with the same sign and cancel."""
+    db_file = _base_parent_db(tmp_path)
+    cli.account_create(_ns(db_file, name="YOLO", parent="1111", starting_cash=None, starting_cash_date=None))
+    cli.account_allocate(_ns(
+        db_file, tx_date="2020-01-02", tx_asset="Asset A", to="YOLO", from_account=None, shares=None
+    ))
+    db = DatabaseHandler(db_file)
+    db.connect()
+    cur = db.get_cursor()
+    cur.execute(
+        "SELECT COALESCE(SUM(withdrawal + capital - deposit - transfer_net), 0) "
+        "FROM cohort_data WHERE account IN ('1111','YOLO')"
+    )
+    # 20000 deposited, 10000 still cash on parent, 10000 converted to assets on
+    # YOLO -> aggregate realized = -10000 (the unrealized asset position).
+    assert cur.fetchone()[0] == pytest.approx(-10000, abs=1)
+    db.disconnect()
+
+
+def test_physical_to_physical_transfer_keeps_transfer_net_and_cash_flows(tmp_path):
+    """Regression guard (issue #82): physical-to-physical Intern överföring must
+    keep using transfer_net (not deposit) and must write cohort_cash_flows rows."""
+    db_file = tmp_path / "phys.db"
+    csv_text = (
+        "Datum;Konto;Typ av transaktion;Värdepapper/beskrivning;Antal;Kurs;Belopp;Courtage;Valuta;ISIN;Resultat\n"
+        "2020-01-01;1111;Insättning;Deposit;-;-;200;0;SEK;;-\n"
+        "2020-01-02;1111;Intern överföring;To 2222;-;-;-80;0;SEK;;-\n"
+        "2020-01-02;2222;Intern överföring;From 1111;-;-;80;0;SEK;;-\n"
+    )
+    csv_file = _write_csv(tmp_path, "phys.csv", csv_text)
+    db = DatabaseHandler(db_file)
+    parser = DataParser(db)
+    db.connect()
+    parser.add_data(csv_file)
+    parser.reset_for_reprocessing()
+    parser.process_transactions()
+    cur = db.get_cursor()
+    cur.execute(
+        "SELECT COALESCE(SUM(deposit),0), COALESCE(SUM(transfer_net),0) "
+        "FROM cohort_data WHERE account='1111'"
+    )
+    src_dep, src_tn = cur.fetchone()
+    assert src_dep == pytest.approx(200, abs=0.01)
+    assert src_tn == pytest.approx(-80, abs=0.01)
+    cur.execute(
+        "SELECT COALESCE(SUM(deposit),0), COALESCE(SUM(transfer_net),0) "
+        "FROM cohort_data WHERE account='2222'"
+    )
+    dst_dep, dst_tn = cur.fetchone()
+    assert dst_dep == pytest.approx(0, abs=1e-6)
+    assert dst_tn == pytest.approx(80, abs=0.01)
+    cur.execute("SELECT COUNT(*) FROM cohort_cash_flows WHERE account IN ('1111','2222')")
+    assert cur.fetchone()[0] == 2
+    db.disconnect()
+
+
 # ---------- undo mode (allocate to parent) ----------
 
 def test_allocate_undo_moves_buy_back_and_deletes_transfer(tmp_path):
