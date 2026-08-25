@@ -1814,19 +1814,25 @@ def route_imported_dividends_to_holders(db):
         if not distribution:
             continue
 
+        # Split the original SEK total proportionally across holders instead
+        # of recomputing shares * dps: the price column is in the instrument's
+        # currency (e.g. DKK) while `total` is in SEK, so recomputing silently
+        # mixes currencies and understates the dividend (issue #83).
+        total_shares = sum(s for _, s in distribution)
         first_acc, first_shares = distribution[0]
+        first_total = total * first_shares / total_shares
         cur.execute(
             "UPDATE transactions SET account = ?, amount = ?, total = ? WHERE rowid = ?",
-            (first_acc, first_shares, first_shares * dps, rowid)
+            (first_acc, first_shares, first_total, rowid)
         )
         for acc, shares in distribution[1:]:
             cur.execute(
                 "INSERT INTO transactions (date, account, transaction_type, asset_name, amount, price, total, courtage, currency, isin, origin) "
                 "VALUES (?, ?, 'Utdelning', ?, ?, ?, ?, ?, ?, ?, 'avanza')",
-                (tx_date, acc, asset, shares, dps, shares * dps, courtage, currency, isin)
+                (tx_date, acc, asset, shares, dps, total * shares / total_shares, courtage, currency, isin)
             )
         logging.info(
-            f"Auto-distributed dividend on '{asset}' ({amount} shares) across holders: "
+            f"Auto-distributed dividend on '{asset}' ({amount} shares, total {total}) across holders: "
             f"{[(a, round(s, 2)) for a, s in distribution]}."
         )
         routed += 1

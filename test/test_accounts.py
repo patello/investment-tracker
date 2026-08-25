@@ -1261,3 +1261,29 @@ def test_delete_non_virtual_rejected(tmp_path):
     db_file = _base_parent_db(tmp_path)
     rc = cli.account_delete(_ns(db_file, name="1111"))
     assert rc == 1
+
+
+def test_dividend_routing_preserves_sek_total_for_foreign_currency_dividends(tmp_path):
+    """Regression test (issue #83): dividends on foreign-currency instruments
+    have a price column in the instrument currency (e.g. DKK) but Belopp/total
+    in SEK. Re-splitting across holders must divide the SEK total, not
+    recompute shares * dps (which mixes currencies and understates the
+    dividend)."""
+    db_file = _base_parent_db(tmp_path)
+    cli.account_create(_ns(db_file, name="YOLO", parent="1111", starting_cash=None, starting_cash_date=None))
+    cli.account_allocate(_ns(db_file, tx_date="2020-01-02", tx_asset="Asset A", to="YOLO", from_account=None, shares=None))
+    # All 100 shares on YOLO; dividend of 3.75 DKK/share -> 375 DKK = 550 SEK total
+    csv = _DIV + "2020-06-01;1111;Utdelning;Asset A;100;3,75;550;0;SEK;ASSETA;-"
+    routed = _import_more(db_file, csv, tmp_path)
+    assert routed == 1
+    db = DatabaseHandler(db_file)
+    db.connect()
+    cur = db.get_cursor()
+    cur.execute("SELECT amount, price, total FROM transactions WHERE transaction_type='Utdelning'")
+    rows = cur.fetchall()
+    db.disconnect()
+    assert len(rows) == 1
+    amount, dps, total = rows[0]
+    assert amount == pytest.approx(100, abs=1e-6)
+    assert dps == pytest.approx(3.75, abs=1e-6)   # instrument currency preserved
+    assert total == pytest.approx(550, abs=1e-6)   # SEK total preserved, NOT 375
