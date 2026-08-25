@@ -1287,3 +1287,26 @@ def test_dividend_routing_preserves_sek_total_for_foreign_currency_dividends(tmp
     assert amount == pytest.approx(100, abs=1e-6)
     assert dps == pytest.approx(3.75, abs=1e-6)   # instrument currency preserved
     assert total == pytest.approx(550, abs=1e-6)   # SEK total preserved, NOT 375
+
+
+def test_dividend_credits_capital_from_sek_total_not_native_price(tmp_path):
+    """Regression test (issue #85): handle_dividend must credit capital using
+    the SEK total (total / amount), not the instrument-currency price column.
+    A dividend with Kurs 3.75 (instrument currency) and Belopp 22.05 SEK on
+    4 shares must credit 22.05 SEK of capital, not 15.00."""
+    db_file = _base_parent_db(tmp_path)
+    cli.account_create(_ns(db_file, name="YOLO", parent="1111", starting_cash=None, starting_cash_date=None))
+    cli.account_allocate(_ns(db_file, tx_date="2020-01-02", tx_asset="Asset A", to="YOLO", from_account=None, shares=None))
+    # All 100 shares on YOLO. Dividend: Kurs 3.75 (instrument currency),
+    # Belopp 550 SEK -> per-share SEK rate 5.50, NOT 3.75.
+    csv = _DIV + "2020-06-01;1111;Utdelning;Asset A;100;3,75;550;0;SEK;ASSETA;-"
+    routed = _import_more(db_file, csv, tmp_path)
+    assert routed == 1
+    db = DatabaseHandler(db_file)
+    db.connect()
+    cur = db.get_cursor()
+    cur.execute("SELECT COALESCE(SUM(capital), 0) FROM cohort_data WHERE account = 'YOLO'")
+    yolo_cash = cur.fetchone()[0]
+    db.disconnect()
+    # YOLO held all 100 shares at dividend time: 100 * 5.50 = 550 SEK credited
+    assert yolo_cash == pytest.approx(550, abs=0.5)

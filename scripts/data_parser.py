@@ -708,7 +708,16 @@ class DataParser:
             result = self.data_cur.execute("SELECT asset_id FROM assets WHERE asset = ?",(asset,)).fetchone()
         asset_id = result[0]
         remaining_amount = row[4]
-        dividend_per_asset = row[5]
+        # Per-share rate used to credit capital. The price column (row[5]) is
+        # in the instrument's native currency while `total` (row[6]) is in
+        # SEK, so crediting shares * price silently mixes currencies for
+        # foreign-currency dividends (issue #85). Derive the SEK per-share
+        # rate from the SEK total instead; fall back to the price column only
+        # when the amount is zero or missing.
+        if abs(row[4]) > 1e-6 and abs(row[6]) > 1e-6:
+            dividend_per_asset = abs(row[6]) / abs(row[4])
+        else:
+            dividend_per_asset = row[5]
         month_asset_amounts = self.available_asset(asset_id, account)
         for (month,asset_amount) in month_asset_amounts:
                 self.data_cur.execute("INSERT OR IGNORE INTO cohort_data(month, account) VALUES(?,?)", (month, account))
