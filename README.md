@@ -64,6 +64,13 @@ python cli.py accounts --update-prices auto
 
 ## Usage
 
+### Network access and privacy
+
+By default this tool is not fully offline. Be aware of outbound requests:
+
+- **Avanza public API** — live price/FX lookups send the asset names and currency pairs from your portfolio (this is how `--update-prices auto` works). Use `--update-prices never` to keep it fully offline (cached prices only).
+- **Riksbanken API and Yahoo Finance** — only contacted for risk metrics (`--risk`, `--beta`) to fetch policy rates and benchmark prices; this sends the benchmark ticker and date range, not your holdings.
+
 ### Command Line Interface (CLI)
 
 A unified CLI is available via `cli.py`. It provides subcommands for all major operations:
@@ -84,8 +91,15 @@ python cli.py status
 python cli.py reset
 
 # Hard reset (delete all transactions, stats, and prices while keeping configuration)
+# WARNING: irreversible — permanently deletes all financial history in the database. Back it up first.
 python cli.py reset --hard
 ```
+
+> **Irreversible operations.** `reset --hard`, `delete-tx`, `account allocate --undo`, and
+> `account delete` permanently remove data and rebuild derived tables. There is no undo.
+> Back up the database before running them, and prefer `--dry-run` where available
+> (e.g. `delete-tx --dry-run`) to preview the blast radius. Avoid broad selectors like
+> `delete-tx --since` unless you are certain what they will remove.
 
 All commands accept optional `--database` and `--special-cases` arguments to override default paths:
 
@@ -365,6 +379,10 @@ python cli.py portfolio --account "account1" --apy-mode twrr
 
 ### Deleting transactions
 
+> **Irreversible.** `delete-tx` permanently removes the matched transactions and rebuilds
+> derived tables — there is no undo. Back up the database first and use `--dry-run` to
+> preview, especially with broad selectors like `--since`.
+
 `delete-tx` removes specific real transactions and rebuilds the derived `assets` / cohort tables, so there is no need to `reset` the whole database after a bad import (e.g. a duplicate, or a row that slipped in before an unsettled trade was deferred). Targeting is mutually exclusive:
 
 - `delete-tx --tx-id ROWID` — most precise (use `status`/`export` to find the rowid).
@@ -452,7 +470,7 @@ python cli.py account nickname --remove 1234567
 - **`allocate --to <parent>`** (undo) moves a transaction back from a virtual to the parent and **deletes** the funding transfer pair that was created during the original allocation. No compensating transactions are created. Requires `--from <virtual>`. Partial undo (`--shares`) is not supported.
 - **`transfer`** (asset move) is represented internally as a sell on the source → cash transfer → rebuy on the destination (all tagged as synthetic). This composes the existing transaction handlers and is correct on every statistics path. The **source realizes its gain** up to the transfer and the **destination gets a fresh cost basis** at the transfer price — an honest "this position left / entered the strategy" bookkeeping.
 - **`close`** moves every holding (via the same decomposition) plus any residual cash back to the parent, then reprocesses. The virtual account row is **preserved** (kept `is_virtual = 1`) so its historical cohort/performance data remains queryable; it simply ends up empty.
-- **`delete`** is a clean teardown: reverts all real transactions back to the parent, removes every synthetic transaction tied to the virtual (including partner legs on other accounts), and deletes the account row. Unlike `close`, it leaves no trace — use it to correct a mistake rather than wind down a strategy.
+- **`delete`** is a clean teardown: reverts all real transactions back to the parent, removes every synthetic transaction tied to the virtual (including partner legs on other accounts), and deletes the account row. Unlike `close`, it leaves no trace — use it to correct a mistake rather than wind down a strategy. **Irreversible:** the virtual's historical performance data is lost on delete; use `close` instead if you want to preserve queryable history.
 - After every `account` mutation the cohort tables are rebuilt automatically (same reprocessing as an import).
 
 ### Viewing virtual portfolios
