@@ -12,7 +12,10 @@ This project is a work in progress and will be updated as I go along.
 
 - [Features](#features)
 - [Installation](#installation)
-- [Usage](#usage)
+- [Usage](#usage) — includes [Network access and privacy](#network-access-and-privacy)
+- [CLI Reference](#cli-reference)
+- [Virtual Portfolios](#virtual-portfolios)
+- [Special Cases](#special-cases)
 - [Contributing](#contributing)
 - [License](#license)
 
@@ -34,6 +37,10 @@ This project is a work in progress and will be updated as I go along.
     - **Accumulated**: See total portfolio value over time with assets carried forward
 - **Account filtering**: View statistics for any combination of accounts with full accumulated history support
 - **System status**: Check database statistics, price freshness, and transaction date range
+- **Virtual portfolios**: Track sub-portfolios (e.g. strategy sleeves) separately with allocation, transfers, and virtual-vs-parent performance comparison
+- **Risk metrics**: Optional risk/beta calculations against a benchmark (fetches policy rates and benchmark prices from Riksbanken/Yahoo Finance)
+- **Reporting**: Investment report command with a virtual-portfolio section and benchmark comparison
+- **Safety rails**: Destructive commands (`reset --hard`, `delete-tx`, `account delete`) require confirmation and write an automatic timestamped `.bak` backup first
 
 ## Installation
 
@@ -106,6 +113,9 @@ python cli.py reset --hard
 > non-interactive shells (agents, cron, scripts) only run when `--yes` is passed —
 > and (2) automatically copy the database to a timestamped
 > `<db>.pre-<command>.<YYYYMMDD-HHMMSS>.bak` file before making any changes.
+> Backup files are never cleaned up automatically — delete them yourself once you are
+> satisfied the operation went well (and consider adding `*.bak` to your `.gitignore` if
+> the database lives in a git repo).
 
 All commands accept optional `--database` and `--special-cases` arguments to override default paths:
 
