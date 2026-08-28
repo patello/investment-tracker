@@ -100,6 +100,12 @@ python cli.py reset --hard
 > Back up the database before running them, and prefer `--dry-run` where available
 > (e.g. `delete-tx --dry-run`) to preview the blast radius. Avoid broad selectors like
 > `delete-tx --since` unless you are certain what they will remove.
+>
+> Since the audit-hardening update, `reset --hard`, `delete-tx`, and `account delete`
+> additionally: (1) ask for confirmation — interactively via a y/N prompt, and in
+> non-interactive shells (agents, cron, scripts) only run when `--yes` is passed —
+> and (2) automatically copy the database to a timestamped
+> `<db>.pre-<command>.<YYYYMMDD-HHMMSS>.bak` file before making any changes.
 
 All commands accept optional `--database` and `--special-cases` arguments to override default paths:
 

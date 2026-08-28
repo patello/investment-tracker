@@ -70,7 +70,7 @@ def test_delete_tx_by_date_asset(tmp_path):
     db_file = _build_db(tmp_path, BASE_CSV)
     assert _asset_amount(db_file) == 100  # held before
     rc = cli.delete_tx(_ns(db_file, tx_id=None, date="2020-01-02", since=None,
-                           asset="Asset A", account=None, cascade=False, dry_run=False))
+                           asset="Asset A", account=None, cascade=False, dry_run=False, yes=True))
     assert rc == 0
     assert _count(db_file, "transaction_type='Köp'") == 0
     assert _count(db_file, "transaction_type='Insättning'") == 1  # deposit untouched
@@ -85,7 +85,7 @@ def test_delete_tx_tx_id(tmp_path):
         "SELECT rowid FROM transactions WHERE transaction_type='Köp'").fetchone()[0]
     db.disconnect()
     rc = cli.delete_tx(_ns(db_file, tx_id=rid, date=None, since=None,
-                           asset=None, account=None, cascade=False, dry_run=False))
+                           asset=None, account=None, cascade=False, dry_run=False, yes=True))
     assert rc == 0
     assert _count(db_file, "transaction_type='Köp'") == 0
 
@@ -94,7 +94,7 @@ def test_delete_tx_since(tmp_path):
     db_file = _build_db(tmp_path, TWO_BUY_CSV)
     assert _count(db_file, "transaction_type='Köp'") == 2
     rc = cli.delete_tx(_ns(db_file, tx_id=None, date=None, since="2020-02-02",
-                           asset=None, account=None, cascade=False, dry_run=False))
+                           asset=None, account=None, cascade=False, dry_run=False, yes=True))
     assert rc == 0
     assert _count(db_file, "transaction_type='Köp' AND asset_name='Asset B'") == 0
     assert _count(db_file, "transaction_type='Köp' AND asset_name='Asset A'") == 1
@@ -112,7 +112,7 @@ def test_delete_tx_dry_run(tmp_path):
 def test_delete_tx_no_match(tmp_path):
     db_file = _build_db(tmp_path, BASE_CSV)
     rc = cli.delete_tx(_ns(db_file, tx_id=None, date="2020-01-02", since=None,
-                           asset="Nonexistent", account=None, cascade=False, dry_run=False))
+                           asset="Nonexistent", account=None, cascade=False, dry_run=False, yes=True))
     assert rc == 1
 
 
@@ -125,7 +125,7 @@ def test_delete_tx_funding_pair_cleanup(tmp_path):
                                     to="YOLO", from_account=None, shares=None)) == 0
     assert _count(db_file, "transaction_type='Intern överföring' AND origin='virtual'") >= 2
     rc = cli.delete_tx(_ns(db_file, tx_id=None, date="2020-01-02", since=None,
-                           asset="Asset A", account="YOLO", cascade=False, dry_run=False))
+                           asset="Asset A", account="YOLO", cascade=False, dry_run=False, yes=True))
     assert rc == 0
     assert _count(db_file, "transaction_type='Köp' AND account='YOLO'") == 0
     assert _count(db_file, "transaction_type='Intern överföring' AND origin='virtual'") == 0
@@ -141,6 +141,30 @@ def test_delete_tx_cascade(tmp_path):
                                     to="YOLO", from_account=None, shares=40)) == 0
     assert _count(db_file, "transaction_type='Köp'") == 2
     rc = cli.delete_tx(_ns(db_file, tx_id=None, date="2020-01-02", since=None,
-                           asset="Asset A", account="1111", cascade=True, dry_run=False))
+                           asset="Asset A", account="1111", cascade=True, dry_run=False, yes=True))
     assert rc == 0
     assert _count(db_file, "transaction_type='Köp'") == 0
+
+
+def test_delete_tx_refuses_without_yes(tmp_path, monkeypatch):
+    """Non-interactive delete-tx without --yes must refuse and delete nothing."""
+    import io, sys as _sys
+    monkeypatch.setattr(_sys, "stdin", io.StringIO(""))  # not a tty
+    db_file = _build_db(tmp_path, BASE_CSV)
+    before = _count(db_file, "1=1")
+    rc = cli.delete_tx(_ns(db_file, tx_id=None, date="2020-01-02", since=None,
+                           asset="Asset A", account=None, cascade=False, dry_run=False))
+    assert rc == 1
+    assert _count(db_file, "1=1") == before
+
+
+def test_delete_tx_creates_backup(tmp_path, monkeypatch):
+    """delete-tx with --yes writes an automatic pre-delete backup next to the DB."""
+    import io, sys as _sys, glob
+    monkeypatch.setattr(_sys, "stdin", io.StringIO(""))
+    db_file = _build_db(tmp_path, BASE_CSV)
+    rc = cli.delete_tx(_ns(db_file, tx_id=None, date="2020-01-02", since=None,
+                           asset="Asset A", account=None, cascade=False, dry_run=False, yes=True))
+    assert rc == 0
+    backups = glob.glob(str(db_file) + ".pre-delete-tx.*.bak")
+    assert len(backups) == 1
