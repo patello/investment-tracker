@@ -378,8 +378,8 @@ python cli.py portfolio --account "account1" --apy-mode twrr
 | `python scripts/cli.py portfolio [OPTIONS]` | Show portfolio holdings, market value, allocation %, and APY (alias to `stats --positions --summary`) |
 | `python scripts/cli.py status` | Display system status (transaction counts, price dates, date range) |
 | `python scripts/cli.py settings SUBCOMMAND` | Configure defaults and account nicknames |
-| `python scripts/cli.py reset [--hard]` | Reset database state (`--hard` deletes data; default only marks unprocessed) |
-| `python scripts/cli.py delete-tx [OPTIONS]` | Delete individual transaction(s) by `--tx-id`, `--date`+`--asset`, or `--since`, then rebuild derived tables (see below) |
+| `python scripts/cli.py reset [--hard] [--yes]` | Reset database state (`--hard` deletes data; default only marks unprocessed). `--hard` prompts for confirmation (or requires `--yes` non-interactively) and writes an automatic timestamped `.bak` backup first |
+| `python scripts/cli.py delete-tx [OPTIONS]` | Delete individual transaction(s) by `--tx-id`, `--date`+`--asset`, or `--since`, then rebuild derived tables (see below). Prompts for confirmation unless `--dry-run` or `--yes` is used; writes an automatic timestamped `.bak` backup first |
 | `python scripts/cli.py account SUBCOMMAND` | Manage accounts — virtual sub-portfolios (create/allocate/transfer/list/close/delete) and nicknames (see below) |
 | `python scripts/cli.py report [OPTIONS]` | Investment report with a virtual-portfolio section and a virtual-vs-parent-vs-benchmark comparison |
 
@@ -395,7 +395,7 @@ python cli.py portfolio --account "account1" --apy-mode twrr
 - `delete-tx --date YYYY-MM-DD --asset "Name" [--account ACCOUNT]` — the common surgical case.
 - `delete-tx --since YYYY-MM-DD [--account ACCOUNT]` — remove everything from a date onward (e.g. undo today's import).
 
-`--cascade` widens a `--date`+`--asset` match across the account family (parent + its virtuals) so a trade and its allocated split are removed together; `--dry-run` previews the deletion. When an allocated buy on a virtual is deleted, its orphaned funding `Intern överföring` transfer is removed automatically (mirroring `account allocate --undo`). After every deletion all transactions are reprocessed, so the `assets`/cohort tables always reflect the remaining transactions — never a half-deleted state.
+`--cascade` widens a `--date`+`--asset` match across the account family (parent + its virtuals) so a trade and its allocated split are removed together; `--dry-run` previews the deletion; `--yes` skips the confirmation prompt (required when running non-interactively, e.g. from an agent or script — the command refuses with exit code 1 otherwise). A timestamped `<db>.pre-delete-tx.<YYYYMMDD-HHMMSS>.bak` backup is written before any rows are deleted. When an allocated buy on a virtual is deleted, its orphaned funding `Intern överföring` transfer is removed automatically (mirroring `account allocate --undo`). After every deletion all transactions are reprocessed, so the `assets`/cohort tables always reflect the remaining transactions — never a half-deleted state.
 
 ### Global Options
 - `--database PATH` (default: `data/asset_data.db`)
@@ -476,7 +476,7 @@ python cli.py account nickname --remove 1234567
 - **`allocate --to <parent>`** (undo) moves a transaction back from a virtual to the parent and **deletes** the funding transfer pair that was created during the original allocation. No compensating transactions are created. Requires `--from <virtual>`. Partial undo (`--shares`) is not supported.
 - **`transfer`** (asset move) is represented internally as a sell on the source → cash transfer → rebuy on the destination (all tagged as synthetic). This composes the existing transaction handlers and is correct on every statistics path. The **source realizes its gain** up to the transfer and the **destination gets a fresh cost basis** at the transfer price — an honest "this position left / entered the strategy" bookkeeping.
 - **`close`** moves every holding (via the same decomposition) plus any residual cash back to the parent, then reprocesses. The virtual account row is **preserved** (kept `is_virtual = 1`) so its historical cohort/performance data remains queryable; it simply ends up empty.
-- **`delete`** is a clean teardown: reverts all real transactions back to the parent, removes every synthetic transaction tied to the virtual (including partner legs on other accounts), and deletes the account row. Unlike `close`, it leaves no trace — use it to correct a mistake rather than wind down a strategy. **Irreversible:** the virtual's historical performance data is lost on delete; use `close` instead if you want to preserve queryable history.
+- **`delete`** is a clean teardown: reverts all real transactions back to the parent, removes every synthetic transaction tied to the virtual (including partner legs on other accounts), and deletes the account row. Unlike `close`, it leaves no trace — use it to correct a mistake rather than wind down a strategy. **Irreversible:** the virtual's historical performance data is lost on delete; use `close` instead if you want to preserve queryable history. Requires confirmation (y/N prompt, or `--yes` for non-interactive use) and writes an automatic timestamped `.bak` backup of the database before any changes.
 - After every `account` mutation the cohort tables are rebuilt automatically (same reprocessing as an import).
 
 ### Viewing virtual portfolios
