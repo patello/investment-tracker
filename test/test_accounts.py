@@ -1157,7 +1157,7 @@ def test_delete_reverts_transactions_and_removes_virtual(tmp_path):
     ))
     assert _holdings(DatabaseHandler(db_file), "YOLO") == pytest.approx(100, abs=1e-6)
 
-    rc = cli.account_delete(_ns(db_file, name="YOLO"))
+    rc = cli.account_delete(_ns(db_file, name="YOLO", yes=True))
     assert rc == 0
 
     db = DatabaseHandler(db_file)
@@ -1183,7 +1183,7 @@ def test_delete_removes_cash_transfer_traces(tmp_path):
     cli.account_create(_ns(db_file, name="YOLO", parent="1111", starting_cash=5000, starting_cash_date="2020-02-01"))
     assert _count_virtual_transfers(db_file) == 2  # one pair from starting_cash
 
-    rc = cli.account_delete(_ns(db_file, name="YOLO"))
+    rc = cli.account_delete(_ns(db_file, name="YOLO", yes=True))
     assert rc == 0
     assert _count_virtual_transfers(db_file) == 0
 
@@ -1203,7 +1203,7 @@ def test_delete_cleans_up_asset_transfer_partners(tmp_path):
 
     transfers_before = _count_virtual_transfers(db_file)
 
-    rc = cli.account_delete(_ns(db_file, name="YOLO"))
+    rc = cli.account_delete(_ns(db_file, name="YOLO", yes=True))
     assert rc == 0
 
     db = DatabaseHandler(db_file)
@@ -1242,7 +1242,7 @@ def test_delete_other_virtuals_unaffected(tmp_path):
     assert _holdings(DatabaseHandler(db_file), "YOLO") == pytest.approx(50, abs=1e-6)
     assert _holdings(DatabaseHandler(db_file), "GROWTH") == pytest.approx(30, abs=1e-6)
 
-    rc = cli.account_delete(_ns(db_file, name="YOLO"))
+    rc = cli.account_delete(_ns(db_file, name="YOLO", yes=True))
     assert rc == 0
 
     # GROWTH still exists and has its shares

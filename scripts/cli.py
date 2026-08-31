@@ -7,6 +7,7 @@ price updates, and statistics calculation.
 """
 
 import argparse
+import shutil
 import sys
 import logging
 from datetime import datetime, timedelta, date
@@ -25,6 +26,45 @@ def get_db(args):
     db = DatabaseHandler(args.database)
     db.connect()
     return db
+
+
+def backup_database(db, label):
+    """Copy the database file next to itself before a destructive operation.
+
+    Writes <db_file>.pre-<label>.<YYYYMMDD-HHMMSS>.bak so each destructive run
+    gets a distinct backup. Returns the backup path, or None if the source
+    file does not exist (new/empty database).
+    """
+    src = db.db_file
+    if not src or not os.path.exists(src):
+        return None
+    stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    dst = f"{src}.pre-{label}.{stamp}.bak"
+    shutil.copy2(src, dst)
+    logging.info(f"Automatic backup written before destructive operation: {dst}")
+    return dst
+
+
+def confirm_irreversible(action_desc, assume_yes=False):
+    """Confirm a destructive operation with the user.
+
+    Interactive shells get a y/N prompt. Non-interactive shells (agents, cron,
+    scripts) must pass --yes explicitly; otherwise the operation is refused.
+    Returns True if it is safe to proceed.
+    """
+    if assume_yes:
+        return True
+    if sys.stdin is not None and sys.stdin.isatty():
+        try:
+            ans = input(f"{action_desc}\nThis cannot be undone. Proceed? [y/N] ").strip().lower()
+            return ans in ("y", "yes")
+        except EOFError:
+            return False
+    logging.error(
+        "Refusing destructive operation in non-interactive mode without --yes "
+        f"(use --yes to skip this confirmation): {action_desc}"
+    )
+    return False
 
 
 def prices_are_fresh(db, max_age_days=1, update_all=False):
@@ -1294,6 +1334,13 @@ def delete_tx(args):
         return 0
 
     all_ids = matched_rowids | fund_pair_rowids
+    if not confirm_irreversible(
+        f"delete-tx will permanently delete {len(all_ids)} transaction row(s) "
+        "and rebuild derived tables.",
+        getattr(args, 'yes', False),
+    ):
+        return 1
+    backup_database(db, "delete-tx")
     placeholders = ",".join("?" * len(all_ids))
     cur.execute(f"DELETE FROM transactions WHERE rowid IN ({placeholders})", tuple(all_ids))
     deleted = cur.rowcount
@@ -1319,6 +1366,13 @@ def reset(args):
     
     try:
         if getattr(args, 'hard', False):
+            if not confirm_irreversible(
+                "reset --hard will DELETE all transactions, statistics, and prices "
+                "from the database.",
+                getattr(args, 'yes', False),
+            ):
+                return 1
+            backup_database(db, "reset-hard")
             # Hard reset: delete all transaction and calculation tables
             tables_to_reset = [
                 "transactions", "cohort_data", "cohort_assets", "assets",
@@ -2523,6 +2577,15 @@ def account_delete(args):
         logging.error(f"Virtual '{name}' has no parent account; cannot determine revert target.")
         return 1
 
+    if not confirm_irreversible(
+        f"account delete will permanently remove virtual portfolio '{name}', revert its "
+        "real transactions to '{parent}', delete every synthetic transaction tied to it, "
+        "and erase its historical performance data.",
+        getattr(args, 'yes', False),
+    ):
+        return 1
+    backup_database(db, "account-delete")
+
     # Step 1: Collect (date, asset) pairs from asset-transfer legs on the virtual
     # so we can clean up partner Sälj/Köp rows on other accounts.
     cur.execute(
@@ -3204,6 +3267,8 @@ Examples:
     # Delete: clean teardown (revert transactions, remove all traces)
     ap_delete = account_sub.add_parser('delete', help='Delete a virtual portfolio and reverse all of its effects')
     ap_delete.add_argument('--name', required=True, help='Virtual sub-portfolio to delete')
+    ap_delete.add_argument('--yes', action='store_true',
+        help='Skip the destructive-operation confirmation (for non-interactive use)')
     ap_delete.set_defaults(func=account_delete)
 
     # Nickname management (moved here from `settings account-nickname`)
@@ -3244,6 +3309,11 @@ Examples:
         action='store_true',
         help='Hard reset: delete all transactions, stats, and prices'
     )
+    reset_parser.add_argument(
+        '--yes',
+        action='store_true',
+        help='Skip the destructive-operation confirmation (for non-interactive use)'
+    )
     reset_parser.set_defaults(func=reset)
 
     # delete-tx command (issue #80)
@@ -3263,6 +3333,8 @@ Examples:
         help='Also delete related rows across the account family (same date+asset)')
     deltx_parser.add_argument('--dry-run', action='store_true',
         help='Show what would be deleted without writing')
+    deltx_parser.add_argument('--yes', action='store_true',
+        help='Skip the destructive-operation confirmation (for non-interactive use)')
     deltx_parser.set_defaults(func=delete_tx)
 
     args = parser.parse_args()

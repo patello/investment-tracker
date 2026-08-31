@@ -1,11 +1,24 @@
 ---
 name: avanza-investment-tracker
-description: "Process Avanza CSV exports, calculate TWRR/Modified Dietz returns, and track portfolio performance. Use when importing stock transactions, calculating investment returns, or managing portfolio data."
+description: "Process Avanza CSV exports, calculate TWRR/Modified Dietz returns, and track portfolio performance. Use when importing stock transactions, calculating investment returns, or managing portfolio data. Reads/writes a local SQLite database, and (for live prices and risk metrics) makes outbound HTTPS requests to Avanza, Riksbanken, and Yahoo Finance. Includes irreversible deletion commands (reset --hard, delete-tx, account delete) — see Security and Data Access in SKILL.md/README."
+metadata:
+  openclaw:
+    requires:
+      bins:
+        - python3
 ---
 
 # Avanza Investment Tracker
 
 Parse transaction CSVs and compute portfolio performance metrics.
+
+## Security and Data Access
+
+Be aware of what this skill does before running it:
+
+- **Local database writes:** imports, price updates, and portfolio management read and write a local SQLite database.
+- **Network access (optional but on by default):** live price/FX lookups contact Avanza's public API with the asset names in your portfolio; risk metrics (`--risk`, `--beta`) may also contact the Riksbanken API and Yahoo Finance (benchmark ticker + date range). Use `--update-prices never` to stay fully offline.
+- **Irreversible deletions:** `reset --hard`, `delete-tx`, `account allocate --undo`, and `account delete` permanently remove transactions and rebuild derived tables. There is no built-in undo. Back up your database first (e.g. `cp` or git), and prefer `delete-tx --dry-run` to preview. Avoid broad selectors like `delete-tx --since` unless you are certain of the blast radius.
 
 ## Quick Start
 
