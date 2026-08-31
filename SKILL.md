@@ -6,6 +6,13 @@ metadata:
     requires:
       bins:
         - python3
+    permissions:
+      filesystem:
+        - "read/write: user-specified local SQLite database (--database path); no other files accessed"
+      network:
+        - "https://www.avanza.se (price/FX/chart data for held assets; optional, disable with --update-prices never)"
+        - "https://api.riksbank.se (reference rates for risk metrics; optional)"
+        - "https://query1.finance.yahoo.com (benchmark index prices for beta/correlation; optional)"
 ---
 
 # Avanza Investment Tracker
